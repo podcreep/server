@@ -1,0 +1,12 @@
+{{ define "base" }}
+<!DOCTYPE html>
+<head>
+  <title>{{block "title" .}}Podcreep{{end}}</title>
+  <link rel="stylesheet" href="/admin/static/style.css">
+  {{block "style" .}}{{end}}
+</head>
+<body>
+  {{template "content" .}}
+  {{block "js" .}}{{end}}
+</body>
+{{ end }}
