@@ -1,0 +1,16 @@
+{{define "style"}}
+<style>
+</style>
+{{end}}
+
+{{define "content"}}
+<h1>Podcasts</h1>
+
+{{range $index, $p := .Podcasts}}
+  <div>
+    <img src="{{$p.ImageURL}}" width="100" />
+    <div>{{$p.Title}}</div>
+  </div>
+{{end}}
+
+{{end}}

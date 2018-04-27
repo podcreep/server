@@ -34,3 +34,23 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	}
 	return key.IntID(), nil
 }
+
+// LoadPodcasts loads all podcasts from the data store.
+// TODO: support paging, filtering, sorting(?), etc.
+func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
+	q := datastore.NewQuery("podcast")
+	var podcasts []*Podcast
+	for t := q.Run(ctx); ; {
+		var podcast Podcast
+		key, err := t.Next(&podcast)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		podcast.ID = key.IntID()
+		podcasts = append(podcasts, &podcast)
+	}
+	return podcasts, nil
+}

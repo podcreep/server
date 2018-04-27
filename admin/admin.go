@@ -23,6 +23,19 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	render(w, "index.html", data)
 }
 
+func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
+	podcasts, err := store.LoadPodcasts(ctx)
+	if err != nil {
+		// TODO: handle error
+	}
+
+	render(w, "podcast-list.html", map[string]interface{}{
+		"Podcasts": podcasts,
+	})
+}
+
 func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 	ctx := appengine.NewContext(r)
 
@@ -105,7 +118,8 @@ func Setup(r *mux.Router) error {
 		return err
 	}
 
-	r.HandleFunc("/admin", handleHome)
+	r.HandleFunc("/admin", handleHome).Methods("GET")
+	r.HandleFunc("/admin/podcasts", handlePodcastsList).Methods("GET")
 	r.HandleFunc("/admin/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
 	r.HandleFunc("/admin/podcasts/edit", handlePodcastsEditPost).Methods("POST")
 
