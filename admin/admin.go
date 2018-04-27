@@ -2,16 +2,17 @@
 package admin
 
 import (
+	"encoding/xml"
 	"fmt"
-	"html/template"
 	"net/http"
-	"path/filepath"
 
 	"github.com/gorilla/mux"
-)
-
-var (
-	templates map[string]*template.Template
+	"github.com/gorilla/schema"
+	"github.com/podcreep/server/rss"
+	"github.com/podcreep/server/store"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
+	"google.golang.org/appengine/urlfetch"
 )
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
@@ -22,47 +23,91 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	render(w, "index.html", data)
 }
 
-func render(w http.ResponseWriter, name string, data interface{}) {
-	tmpl, ok := templates[name]
-	if !ok {
-		http.Error(w, fmt.Sprintf("The template %s does not exist.", name), http.StatusInternalServerError)
+func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
+	if r.Method == "GET" {
+		render(w, "podcast-add.html", nil)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := tmpl.Execute(w, data)
+	// It's a POST, so first, grab the URL of the RSS feed.
+	r.ParseForm()
+	url := r.Form.Get("url")
+	log.Infof(ctx, "Fetching RSS URL: %s", url)
+
+	// Fetch the RSS feed via a HTTP request.
+	fetchClient := urlfetch.Client(ctx)
+	resp, err := fetchClient.Get(url)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// TODO: report error more nicely than this
+		http.Error(w, fmt.Sprintf("Error fetching URL: %s: %v", url, err), http.StatusInternalServerError)
+		return
 	}
+	log.Infof(ctx, "Fetched %d bytes, status %d %s, type %s", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
+	if resp.StatusCode != 200 {
+		http.Error(w, fmt.Sprintf("Error fetching URL: %s status=%d", url, resp.StatusCode), http.StatusInternalServerError)
+		return
+	}
+
+	// Unmarshal the RSS feed into an object we can query.
+	var feed rss.Feed
+	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+		http.Error(w, fmt.Sprintf("Error unmarshalling response: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	podcast := store.Podcast{
+		Title:       feed.Channel.Title,
+		Description: feed.Channel.Description,
+		ImageURL:    feed.Channel.Image.URL,
+		FeedURL:     feed.Channel.Link.Href,
+	}
+
+	render(w, "podcast-edit.html", map[string]interface{}{
+		"Podcast": podcast,
+	})
+}
+
+func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	if err := r.ParseForm(); err != nil {
+		// TODO: handle error
+	}
+
+	var podcast *store.Podcast
+	sid := r.Form.Get("id")
+	if sid != "" {
+		// TODO: load podcast
+	} else {
+		podcast = &store.Podcast{}
+	}
+
+	if err := schema.NewDecoder().Decode(podcast, r.PostForm); err != nil {
+		// TODO: handle error
+	}
+
+	log.Infof(ctx, "Saving: %v", podcast)
+	id, err := store.SavePodcast(ctx, podcast)
+	if err != nil {
+		// TODO: handle error
+	}
+	podcast.ID = id
+
+	render(w, "podcast-edit.html", map[string]interface{}{
+		"Podcast": podcast,
+	})
 }
 
 // Setup is called from server.go and sets up our routes, etc.
 func Setup(r *mux.Router) error {
-	skeletons, err := filepath.Glob("admin/tmpl/_*.html")
-	if err != nil {
-		return fmt.Errorf("error loading skeletons: %v", err)
-	}
-	tmplFiles, err := filepath.Glob("admin/tmpl/*.html")
-	if err != nil {
-		return fmt.Errorf("error loading templates: %v", err)
-	}
-	mainTmpl, err := template.New("main").Parse(`{{define "main" }}{{ template "base" . }}{{ end }}`)
-	if err != nil {
-		return fmt.Errorf("error parsing main template: %v", err)
-	}
-
-	templates = make(map[string]*template.Template)
-	for _, tmplFile := range tmplFiles {
-		fileName := filepath.Base(tmplFile)
-		files := append(skeletons, tmplFile)
-		tmpl, err := mainTmpl.Clone()
-		if err != nil {
-			return fmt.Errorf("here %v", err)
-		}
-		templates[fileName] = template.Must(tmpl.ParseFiles(files...))
+	if err := initTemplates(); err != nil {
+		return err
 	}
 
 	r.HandleFunc("/admin", handleHome)
+	r.HandleFunc("/admin/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
+	r.HandleFunc("/admin/podcasts/edit", handlePodcastsEditPost).Methods("POST")
 
 	return nil
 }

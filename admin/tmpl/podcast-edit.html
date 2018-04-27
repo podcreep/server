@@ -1,0 +1,36 @@
+{{define "style"}}
+<style>
+  .title {
+    font-size: 200%;
+    font-weight: bold;
+  }
+
+  input {
+    width: 600px;
+  }
+  textarea {
+    width: 600px;
+    height: 200px;
+  }
+</style>
+{{end}}
+
+{{define "content"}}
+<form method="post" action="/admin/podcasts/edit">
+  <input type="hidden" name="ID" value="{{.Podcast.ID}}">
+  <p><input type="text" name="Title" class="title" value="{{.Podcast.Title}}"></p>
+  <p><textarea name="Description">{{.Podcast.Description}}</textarea></p>
+  <p><b>Image:</b> <input type="text" name="ImageUrl" value="{{.Podcast.ImageURL}}" ></p>
+  <p><img src="{{.Podcast.ImageURL}}" width="100" /></p>
+  <ul>
+  {{range $index, $ep := .Episodes}}
+    {{if lt $index 5}}
+      <li><a href="{{$ep.MediaURL}}">{{$ep.Title}}</a> ({{$ep.MediaLength}} bytes)</li>
+    {{end}}
+  {{end}}
+  </ul>
+
+  <p><b>URL:</b> <input type="text" name="FeedUrl" value="{{.Podcast.FeedURL}}"></p>
+  <p><button type="submit">Save</button></p>
+</form>
+{{end}}

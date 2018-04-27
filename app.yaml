@@ -1,10 +1,13 @@
 runtime: go
 api_version: go1
 
-nobuild_files: (admin|store)
+nobuild_files: (admin|rss|store)
 
 handlers:
 - url: /admin/static
   static_dir: admin/static
+- url: /admin
+  script: _go_app
+  login: admin
 - url: /.*
   script: _go_app

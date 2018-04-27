@@ -1,0 +1,16 @@
+{{define "style"}}
+<style>
+  input[type=text] {
+    width: 400px;
+  }
+</style>
+{{end}}
+
+{{define "content"}}
+<h1>Add Podcast</h1>
+<p>Enter the URL of the podcast's RSS feed to get started.</p>
+<form method="post">
+  <input type="text" name="url">
+  <button type="submit">Add</button>
+</form>
+{{end}}

@@ -1,3 +1,23 @@
 body {
   font-family: roboto, arial;
 }
+
+#mainnav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 250px;
+  bottom: 0;
+  border-right: dashed 2px #000;
+
+  background: #dde;
+}
+
+#maincontent {
+  position: absolute;
+  top: 0;
+  left: 252px;
+  right: 0;
+  bottom: 0;
+  padding-left: 20px;
+}

@@ -6,7 +6,17 @@
   {{block "style" .}}{{end}}
 </head>
 <body>
-  {{template "content" .}}
+  <section id="mainnav">
+    <ul>
+      <li><span>Podcasts</span>
+        <ul>
+          <li><a href="/admin/podcasts/add">Add podcast</a></li>
+        </ul>
+    </ul>
+  </section>
+  <section id="maincontent">
+    {{template "content" .}}
+  </section>
   {{block "js" .}}{{end}}
 </body>
 {{ end }}
