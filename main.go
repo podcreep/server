@@ -31,7 +31,10 @@ func main() {
 	if appengine.IsDevAppServer() {
 		// Allow requests from other domains in dev mode (in particular, the angular stuff will be
 		// running on a different domain in dev mode).
-		handler = handlers.CORS(handlers.AllowedOrigins([]string{"*"}))(handler)
+		handler = handlers.CORS(
+			handlers.AllowedOrigins([]string{"*"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
+			handlers.AllowedHeaders([]string{"content-type"}))(handler)
 	}
 
 	http.Handle("/", handler)
