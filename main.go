@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/admin"
+	"github.com/podcreep/server/api"
 	"google.golang.org/appengine"
 )
 
@@ -18,9 +20,20 @@ func main() {
 	if err := admin.Setup(r); err != nil {
 		panic(err)
 	}
+	if err := api.Setup(r); err != nil {
+		panic(err)
+	}
 
 	r.HandleFunc("/", handleDefault)
 
-	http.Handle("/", r)
+	var handler http.Handler
+	handler = r
+	if appengine.IsDevAppServer() {
+		// Allow requests from other domains in dev mode (in particular, the angular stuff will be
+		// running on a different domain in dev mode).
+		handler = handlers.CORS(handlers.AllowedOrigins([]string{"*"}))(handler)
+	}
+
+	http.Handle("/", handler)
 	appengine.Main()
 }
