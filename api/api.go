@@ -6,6 +6,7 @@ import "github.com/gorilla/mux"
 func Setup(r *mux.Router) error {
 	r.HandleFunc("/api/accounts", handleAccountsGet).Methods("GET")
 	r.HandleFunc("/api/accounts", handleAccountsPost).Methods("POST")
+	r.HandleFunc("/api/accounts/login", handleAccountsLoginPost).Methods("POST")
 
 	return nil
 }
