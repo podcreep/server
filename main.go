@@ -34,7 +34,7 @@ func main() {
 		handler = handlers.CORS(
 			handlers.AllowedOrigins([]string{"*"}),
 			handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
-			handlers.AllowedHeaders([]string{"content-type"}))(handler)
+			handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
 	}
 
 	http.Handle("/", handler)
