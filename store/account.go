@@ -88,3 +88,24 @@ func LoadAccountByUsername(ctx context.Context, username, password string) (*Acc
 		return &acct, nil
 	}
 }
+
+// LoadAccountByCookie loads the Account for the user with the given cookie. Returns an error
+// if no account with that cookie exists.
+func LoadAccountByCookie(ctx context.Context, cookie string) (*Account, error) {
+	q := datastore.NewQuery("account").
+		Filter("Cookie =", cookie).
+		Limit(1)
+	for row := q.Run(ctx); ; {
+		var acct Account
+		key, err := row.Next(&acct)
+		if err != nil {
+			if err == datastore.Done {
+				return nil, fmt.Errorf("user with cookie '%s' not found", cookie)
+			}
+			return nil, err
+		}
+
+		acct.ID = key.IntID()
+		return &acct, nil
+	}
+}
