@@ -20,6 +20,12 @@ type Account struct {
 	PasswordHash []byte
 }
 
+// Subscription represents a subscription to a podcast. It is a child entity of the account.
+type Subscription struct {
+	ID        int64 `datastore:"-" json:"id"`
+	PodcastID int64 `json:"podcastID"`
+}
+
 func createCookie() (string, error) {
 	var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -58,7 +64,26 @@ func SaveAccount(ctx context.Context, username, password string) (*Account, erro
 	if err != nil {
 		return nil, fmt.Errorf("error storing account: %v", err)
 	}
+
+	acct.ID = key.IntID()
 	return acct, nil
+}
+
+// SaveSubscription saves a new subscription to the data store.
+func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Subscription, error) {
+	acctKey := datastore.NewKey(ctx, "account", "", acct.ID, nil)
+	key := datastore.NewKey(ctx, "subscription", "", 0, acctKey)
+
+	s := &Subscription{
+		PodcastID: podcastID,
+	}
+	key, err := datastore.Put(ctx, key, s)
+	if err != nil {
+		return nil, fmt.Errorf("error storing subscription: %v", err)
+	}
+
+	s.ID = key.IntID()
+	return s, nil
 }
 
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil

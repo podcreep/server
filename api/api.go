@@ -32,6 +32,8 @@ func Setup(r *mux.Router) error {
 	r.HandleFunc("/api/accounts", handleAccountsPost).Methods("POST")
 	r.HandleFunc("/api/accounts/login", handleAccountsLoginPost).Methods("POST")
 	r.HandleFunc("/api/podcasts", handlePodcastsGet).Methods("GET")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}", handlePodcastGet).Methods("GET")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions", handleSubscriptionsPost).Methods("POST")
 
 	return nil
 }

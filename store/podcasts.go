@@ -22,6 +22,10 @@ type Podcast struct {
 
 	// The URL of the podcast's RSS feed.
 	FeedURL string `json:"-"`
+
+	// Subscribers is the list of account IDs that are subscribed to this podcast. Actual settings
+	// and whatnot for the subscriptions are stored with each account.
+	Subscribers []int64 `json:"-"`
 }
 
 // SavePodcast saves the given podcast to the store.
@@ -32,6 +36,17 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 		return 0, err
 	}
 	return key.IntID(), nil
+}
+
+// GetPodcast returns the podcast with the given ID.
+func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
+	key := datastore.NewKey(ctx, "podcast", "", podcastID, nil)
+	podcast := &Podcast{}
+	err := datastore.Get(ctx, key, podcast)
+	if err != nil {
+		return nil, err
+	}
+	return podcast, nil
 }
 
 // LoadPodcasts loads all podcasts from the data store.
