@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"sort"
+	"time"
 
 	"google.golang.org/appengine/datastore"
 )
@@ -26,12 +28,37 @@ type Podcast struct {
 	// Subscribers is the list of account IDs that are subscribed to this podcast. Actual settings
 	// and whatnot for the subscriptions are stored with each account.
 	Subscribers []int64 `json:"-"`
+
+	// Episodes is the list of episodes that belong to this podcast.
+	Episodes []*Episode `datastore:"-" json:"episodes"`
+}
+
+// Episode is a single episode in a podcast.
+type Episode struct {
+	ID   int64  `datastore:"-" json:"id"`
+	GUID string `json:"-"`
+
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	PubDate     time.Time `json:"pubDate"`
+	MediaURL    string    `json:"mediaUrl"`
 }
 
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	key := datastore.NewKey(ctx, "podcast", "", p.ID, nil)
 	key, err := datastore.Put(ctx, key, p)
+	if err != nil {
+		return 0, err
+	}
+	return key.IntID(), nil
+}
+
+// SaveEpisode saves the given episode to the data store.
+func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
+	pkey := datastore.NewKey(ctx, "podcast", "", p.ID, nil)
+	key := datastore.NewKey(ctx, "episode", "", ep.ID, pkey)
+	key, err := datastore.Put(ctx, key, ep)
 	if err != nil {
 		return 0, err
 	}
@@ -46,6 +73,25 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	if err != nil {
 		return nil, err
 	}
+	podcast.ID = key.IntID()
+
+	q := datastore.NewQuery("episode").Ancestor(key)
+	for t := q.Run(ctx); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == datastore.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		ep.ID = key.IntID()
+		podcast.Episodes = append(podcast.Episodes, &ep)
+	}
+
+	sort.Slice(podcast.Episodes, func(i, j int) bool {
+		return podcast.Episodes[j].PubDate.Before(podcast.Episodes[i].PubDate)
+	})
+
 	return podcast, nil
 }
 
@@ -59,8 +105,7 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 		key, err := t.Next(&podcast)
 		if err == datastore.Done {
 			break
-		}
-		if err != nil {
+		} else if err != nil {
 			return nil, err
 		}
 		podcast.ID = key.IntID()
