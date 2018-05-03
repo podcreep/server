@@ -4,10 +4,18 @@ api_version: go1.9
 nobuild_files: (admin|api|rss|store)
 
 handlers:
-- url: /admin/static
+- url: /admin/static.*
   static_dir: admin/static
-- url: /admin
+- url: /admin.*
   script: _go_app
   login: admin
-- url: /.*
+- url: /api.*
   script: _go_app
+- url: /(.*\.(css|js|ico|png|jpg))$
+  static_files: dist/\1
+  upload: dist/.*
+- url: /.*
+  static_files: dist/index.html
+  upload: dist/index.html
+  http_headers:
+    Content-Type: text/html; charset=utf8
