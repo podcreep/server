@@ -17,13 +17,13 @@ type Podcast struct {
 	Title string `json:"title"`
 
 	// The description of the podcast.
-	Description string `json:"description"`
+	Description string `datastore:",noindex" json:"description"`
 
 	// The URL of the title image for the podcast.
-	ImageURL string `json:"imageUrl"`
+	ImageURL string `datastore:",noindex" json:"imageUrl"`
 
 	// The URL of the podcast's RSS feed.
-	FeedURL string `json:"-"`
+	FeedURL string `datastore:",noindex" json:"-"`
 
 	// Subscribers is the list of account IDs that are subscribed to this podcast. Actual settings
 	// and whatnot for the subscriptions are stored with each account.
@@ -38,10 +38,10 @@ type Episode struct {
 	ID   int64  `datastore:"-" json:"id"`
 	GUID string `json:"-"`
 
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
+	Title       string    `datastore:",noindex" json:"title"`
+	Description string    `datastore:",noindex" json:"description"`
 	PubDate     time.Time `json:"pubDate"`
-	MediaURL    string    `json:"mediaUrl"`
+	MediaURL    string    `datastore:",noindex" json:"mediaUrl"`
 }
 
 // SavePodcast saves the given podcast to the store.
