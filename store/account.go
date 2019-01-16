@@ -86,6 +86,28 @@ func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Sub
 	return s, nil
 }
 
+// GetSubscriptions return all of the subscriptions owned by the given account.
+func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
+	var subscriptions []*Subscription
+
+	acctKey := datastore.NewKey(ctx, "account", "", acct.ID, nil)
+	q := datastore.NewQuery("subscription").Ancestor(acctKey)
+	for row := q.Run(ctx); ; {
+		var subscription Subscription
+		_, err := row.Next(&subscription)
+		if err != nil {
+			if err == datastore.Done {
+				break
+			}
+			return nil, err
+		}
+
+		subscriptions = append(subscriptions, &subscription)
+	}
+
+	return subscriptions, nil
+}
+
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil
 // if no account with that username exists.
 func LoadAccountByUsername(ctx context.Context, username, password string) (*Account, error) {
