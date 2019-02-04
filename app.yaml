@@ -6,14 +6,14 @@ handlers:
 - url: /admin/static.*
   static_dir: admin/static
 - url: /admin.*
-  script: _go_app
+  script: auto
   login: admin
 - url: /api.*
-  script: _go_app
+  script: auto
 - url: /(.*\.(css|js|ico|png|jpg))$
   static_files: dist/\1
   upload: dist/.*
-- url: /.*
+- url: /($|podcasts.*|discover.*) # TODO: this "/.*" pattern seems to be broken?
   static_files: dist/index.html
   upload: dist/index.html
   http_headers:
