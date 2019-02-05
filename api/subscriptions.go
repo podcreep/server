@@ -113,7 +113,7 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 		}
 
 		return nil
-	}, nil)
+	})
 	if err != nil {
 		log.Printf("Error updating podcast: %s\n", err)
 		http.Error(w, "Error setting up subscription.", http.StatusInternalServerError)
