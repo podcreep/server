@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log"
+	"net/http"
 	"sort"
 
 	"github.com/podcreep/server/store"
-	"google.golang.org/appengine/log"
-	"google.golang.org/appengine/urlfetch"
 )
 
 // UpdatePodcast fetches the feed URL for the given podcast, parses it and updates all of the
@@ -16,12 +16,11 @@ import (
 // the latest details.
 func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 	// Fetch the RSS feed via a HTTP request.
-	fetchClient := urlfetch.Client(ctx)
-	resp, err := fetchClient.Get(p.FeedURL)
+	resp, err := http.Get(p.FeedURL)
 	if err != nil {
 		return fmt.Errorf("error fetching URL: %s: %v", p.FeedURL, err)
 	}
-	log.Infof(ctx, "Fetched %d bytes, status %d %s", resp.ContentLength, resp.StatusCode, resp.Status)
+	log.Printf("Fetched %d bytes, status %d %s\n", resp.ContentLength, resp.StatusCode, resp.Status)
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("error fetching URL: %s status=%d", p.FeedURL, resp.StatusCode)
 	}
@@ -35,7 +34,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 	for _, item := range feed.Channel.Items {
 		pubDate, err := parsePubDate(item.PubDate)
 		if err != nil {
-			log.Warningf(ctx, "Failed to parse pubdate '%s': %v", item.PubDate, err)
+			log.Printf("Failed to parse pubdate '%s': %v\n", item.PubDate, err)
 		}
 
 		ep := &store.Episode{

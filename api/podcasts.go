@@ -2,11 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
-
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/log"
 
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/rss"
@@ -20,17 +18,17 @@ type podcastList struct {
 // handlePodcastsGet handles requests to view all the podcasts we have in our DB.
 // TODO: support filtering, sorting, paging, etc etc.
 func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
 	if _, err := authenticate(ctx, r); err != nil {
-		log.Warningf(ctx, "%v", err)
+		log.Printf("%v\n", err)
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
 	}
 
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
-		log.Warningf(ctx, "Error fetching podcasts: %v", err)
+		log.Printf("Error fetching podcasts: %v\n", err)
 		http.Error(w, "Error fetching podcasts.", http.StatusInternalServerError)
 		return
 	}
@@ -40,7 +38,7 @@ func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 	}
 	err = json.NewEncoder(w).Encode(&list)
 	if err != nil {
-		log.Errorf(ctx, "Error encoding podcasts: %v", err)
+		log.Printf("Error encoding podcasts: %v\n", err)
 		http.Error(w, "Error encoding podcasts.", http.StatusInternalServerError)
 		return
 	}
@@ -49,26 +47,26 @@ func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 // handlePodcastGet handles requests to view all the podcasts we have in our DB.
 // TODO: support filtering, sorting, paging, etc etc.
 func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 	vars := mux.Vars(r)
 
 	_, err := authenticate(ctx, r)
 	if err != nil {
-		log.Errorf(ctx, "Error authenticating: %v", err)
+		log.Printf("Error authenticating: %v\n", err)
 		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 		return
 	}
 
 	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
 	if err != nil {
-		log.Errorf(ctx, "Error parsing ID: %s", vars["id"])
+		log.Printf("Error parsing ID: %s\n", vars["id"])
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 
 	p, err := store.GetPodcast(ctx, podcastID)
 	if err != nil {
-		log.Warningf(ctx, "Error fetching podcast: %v", err)
+		log.Printf("Error fetching podcast: %v\n", err)
 		http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
 		return
 	}
@@ -77,14 +75,14 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 		// They've asked us explicitly to refresh the podcast (and all it's episodes), so do that
 		// first before fetching the podcast.
 		if err := rss.UpdatePodcast(ctx, p); err != nil {
-			log.Warningf(ctx, "Erroring updating podcast: %v", err)
+			log.Printf("Erroring updating podcast: %v\n", err)
 			// Note: we just keep going, assuming the podcast didn't change.
 		}
 	}
 
 	err = json.NewEncoder(w).Encode(&p)
 	if err != nil {
-		log.Errorf(ctx, "Error encoding podcasts: %v", err)
+		log.Printf("Error encoding podcasts: %v\n", err)
 		http.Error(w, "Error encoding podcasts.", http.StatusInternalServerError)
 		return
 	}

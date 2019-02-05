@@ -2,6 +2,10 @@ runtime: go111
 
 nobuild_files: (admin|api|rss|store)
 
+env_variables:
+  DATASTORE_EMULATOR_HOST: localhost:23002
+  DATASTORE_PROJECT_ID: podcreep
+
 handlers:
 - url: /admin/static.*
   static_dir: admin/static

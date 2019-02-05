@@ -1,18 +1,16 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
-	"google.golang.org/appengine/datastore"
+	"cloud.google.com/go/datastore"
 
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/store"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/log"
 )
 
 // subscriptionDetails contains some additional details we'll include in the subscriptions we return
@@ -30,27 +28,27 @@ type subscriptionDetailsList struct {
 // handleSubscriptionsGet handles a GET request for /api/subscriptions, and returns all of the
 // user's subscriptions.
 func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Errorf(ctx, "Error authenticating: %v", err)
+		log.Printf("Error authenticating: %v\n", err)
 		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 		return
 	}
 
 	subs, err := store.GetSubscriptions(ctx, acct)
 	if err != nil {
-		log.Errorf(ctx, "Error fetching subscriptions: %v", err)
+		log.Printf("Error fetching subscriptions: %v\n", err)
 		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
 		return
 	}
-	log.Infof(ctx, "Got %d subscription(s) for %s", len(subs), acct.Username)
+	log.Printf("Got %d subscription(s) for %s\n", len(subs), acct.Username)
 
 	// TODO: don't fetch all the podcasts just to filter out a few...
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
-		log.Errorf(ctx, "Error fetching podcasts: %v", err)
+		log.Printf("Error fetching podcasts: %v\n", err)
 		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
 		return
 	}
@@ -70,7 +68,7 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		Subscriptions: details,
 	})
 	if err != nil {
-		log.Errorf(ctx, "Error encoding subscriptions: %v", err)
+		log.Printf("Error encoding subscriptions: %v\n", err)
 		http.Error(w, "Error encoding subscriptions.", http.StatusInternalServerError)
 		return
 	}
@@ -79,24 +77,30 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 // handleSubscriptionsPost handles a POST to /api/podcasts/{id}/subscriptions, and adds a
 // subscription to the given podcast for the given user.
 func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 	vars := mux.Vars(r)
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Errorf(ctx, "Error authenticating: %v", err)
+		log.Printf("Error authenticating: %v\n", err)
 		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
 		return
 	}
 
 	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
 	if err != nil {
-		log.Errorf(ctx, "Error parsing ID: %s", vars["id"])
+		log.Printf("Error parsing ID: %s\n", vars["id"])
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 
-	err = datastore.RunInTransaction(ctx, func(ctx context.Context) error {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		log.Printf("Error creating datastore client: %v\n", err)
+		http.Error(w, "Error creating datastore client", http.StatusInternalServerError)
+		return
+	}
+	_, err = ds.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
 		p, err := store.GetPodcast(ctx, podcastID)
 		if err != nil {
 			return fmt.Errorf("error loading podcast: %v", err)
@@ -111,7 +115,7 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}, nil)
 	if err != nil {
-		log.Errorf(ctx, "Error updating podcast: %s", err)
+		log.Printf("Error updating podcast: %s\n", err)
 		http.Error(w, "Error setting up subscription.", http.StatusInternalServerError)
 		return
 	}
@@ -119,14 +123,14 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 	s, err := store.SaveSubscription(ctx, acct, podcastID)
 	if err != nil {
 		// TODO: remove the subscription from the podcast
-		log.Errorf(ctx, "Error saving subscription (TODO: remove subscription from podcast): %v", err)
+		log.Printf("Error saving subscription (TODO: remove subscription from podcast): %v\n", err)
 		http.Error(w, "Error saving subscription", http.StatusInternalServerError)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(s)
 	if err != nil {
-		log.Errorf(ctx, "Error encoding account: %v", err)
+		log.Printf("Error encoding account: %v\n", err)
 		http.Error(w, "Error encoding account.", http.StatusInternalServerError)
 		return
 	}

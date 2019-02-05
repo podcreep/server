@@ -5,7 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"google.golang.org/appengine/datastore"
+	"cloud.google.com/go/datastore"
+	"google.golang.org/api/iterator"
 )
 
 // Podcast is the parent entity for a podcast.
@@ -46,45 +47,60 @@ type Episode struct {
 
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
-	key := datastore.NewKey(ctx, "podcast", "", p.ID, nil)
-	key, err := datastore.Put(ctx, key, p)
+	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return 0, err
 	}
-	return key.IntID(), nil
+
+	key := datastore.IDKey("podcast", p.ID, nil)
+	key, err = ds.Put(ctx, key, p)
+	if err != nil {
+		return 0, err
+	}
+	return key.ID, nil
 }
 
 // SaveEpisode saves the given episode to the data store.
 func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
-	pkey := datastore.NewKey(ctx, "podcast", "", p.ID, nil)
-	key := datastore.NewKey(ctx, "episode", "", ep.ID, pkey)
-	key, err := datastore.Put(ctx, key, ep)
+	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return 0, err
 	}
-	return key.IntID(), nil
+
+	pkey := datastore.IDKey("podcast", p.ID, nil)
+	key := datastore.IDKey("episode", ep.ID, pkey)
+	key, err = ds.Put(ctx, key, ep)
+	if err != nil {
+		return 0, err
+	}
+	return key.ID, nil
 }
 
 // GetPodcast returns the podcast with the given ID.
 func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
-	key := datastore.NewKey(ctx, "podcast", "", podcastID, nil)
-	podcast := &Podcast{}
-	err := datastore.Get(ctx, key, podcast)
+	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	podcast.ID = key.IntID()
+
+	key := datastore.IDKey("podcast", podcastID, nil)
+	podcast := &Podcast{}
+	err = ds.Get(ctx, key, podcast)
+	if err != nil {
+		return nil, err
+	}
+	podcast.ID = key.ID
 
 	q := datastore.NewQuery("episode").Ancestor(key)
-	for t := q.Run(ctx); ; {
+	for t := ds.Run(ctx, q); ; {
 		var ep Episode
 		key, err := t.Next(&ep)
-		if err == datastore.Done {
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		ep.ID = key.IntID()
+		ep.ID = key.ID
 		podcast.Episodes = append(podcast.Episodes, &ep)
 	}
 
@@ -98,17 +114,22 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
 	q := datastore.NewQuery("podcast")
 	var podcasts []*Podcast
-	for t := q.Run(ctx); ; {
+	for t := ds.Run(ctx, q); ; {
 		var podcast Podcast
 		key, err := t.Next(&podcast)
-		if err == datastore.Done {
+		if err == iterator.Done {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		podcast.ID = key.IntID()
+		podcast.ID = key.ID
 		podcasts = append(podcasts, &podcast)
 	}
 	return podcasts, nil

@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 
+	"cloud.google.com/go/datastore"
 	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/log"
+	"google.golang.org/api/iterator"
 )
 
 // Account ...
@@ -54,35 +55,45 @@ func SaveAccount(ctx context.Context, username, password string) (*Account, erro
 		return nil, fmt.Errorf("error creating cookie: %v", err)
 	}
 
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
 	acct := &Account{
 		Cookie:       cookie,
 		Username:     username,
 		PasswordHash: hash,
 	}
-	key := datastore.NewKey(ctx, "account", "", 0, nil)
-	key, err = datastore.Put(ctx, key, acct)
+	key := datastore.IDKey("account", 0, nil)
+	key, err = ds.Put(ctx, key, acct)
 	if err != nil {
 		return nil, fmt.Errorf("error storing account: %v", err)
 	}
 
-	acct.ID = key.IntID()
+	acct.ID = key.ID
 	return acct, nil
 }
 
 // SaveSubscription saves a new subscription to the data store.
 func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Subscription, error) {
-	acctKey := datastore.NewKey(ctx, "account", "", acct.ID, nil)
-	key := datastore.NewKey(ctx, "subscription", "", 0, acctKey)
+	acctKey := datastore.IDKey("account", acct.ID, nil)
+	key := datastore.IDKey("subscription", 0, acctKey)
+
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Subscription{
 		PodcastID: podcastID,
 	}
-	key, err := datastore.Put(ctx, key, s)
+	key, err = ds.Put(ctx, key, s)
 	if err != nil {
 		return nil, fmt.Errorf("error storing subscription: %v", err)
 	}
 
-	s.ID = key.IntID()
+	s.ID = key.ID
 	return s, nil
 }
 
@@ -90,13 +101,18 @@ func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Sub
 func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
 	var subscriptions []*Subscription
 
-	acctKey := datastore.NewKey(ctx, "account", "", acct.ID, nil)
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	acctKey := datastore.IDKey("account", acct.ID, nil)
 	q := datastore.NewQuery("subscription").Ancestor(acctKey)
-	for row := q.Run(ctx); ; {
+	for row := ds.Run(ctx, q); ; {
 		var subscription Subscription
 		_, err := row.Next(&subscription)
 		if err != nil {
-			if err == datastore.Done {
+			if err == iterator.Done {
 				break
 			}
 			return nil, err
@@ -111,15 +127,20 @@ func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, erro
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil
 // if no account with that username exists.
 func LoadAccountByUsername(ctx context.Context, username, password string) (*Account, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
 	q := datastore.NewQuery("account").
 		Filter("Username =", username).
 		Limit(1)
-	for row := q.Run(ctx); ; {
+	for row := ds.Run(ctx, q); ; {
 		var acct Account
 		key, err := row.Next(&acct)
 		if err != nil {
-			if err == datastore.Done {
-				log.Warningf(ctx, "User does not exist %s", username)
+			if err == iterator.Done {
+				log.Printf("User does not exist %s\n", username)
 				return nil, nil
 			}
 			return nil, err
@@ -127,11 +148,11 @@ func LoadAccountByUsername(ctx context.Context, username, password string) (*Acc
 
 		// Check that the password matches as well.
 		if err := bcrypt.CompareHashAndPassword(acct.PasswordHash, []byte(password)); err != nil {
-			log.Warningf(ctx, "Passwords do not match for user %s: %v", username, err)
+			log.Printf("Passwords do not match for user %s: %v\n", username, err)
 			return nil, nil
 		}
 
-		acct.ID = key.IntID()
+		acct.ID = key.ID
 		return &acct, nil
 	}
 }
@@ -139,20 +160,25 @@ func LoadAccountByUsername(ctx context.Context, username, password string) (*Acc
 // LoadAccountByCookie loads the Account for the user with the given cookie. Returns an error
 // if no account with that cookie exists.
 func LoadAccountByCookie(ctx context.Context, cookie string) (*Account, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
 	q := datastore.NewQuery("account").
 		Filter("Cookie =", cookie).
 		Limit(1)
-	for row := q.Run(ctx); ; {
+	for row := ds.Run(ctx, q); ; {
 		var acct Account
 		key, err := row.Next(&acct)
 		if err != nil {
-			if err == datastore.Done {
+			if err == iterator.Done {
 				return nil, fmt.Errorf("user with cookie '%s' not found", cookie)
 			}
 			return nil, err
 		}
 
-		acct.ID = key.IntID()
+		acct.ID = key.ID
 		return &acct, nil
 	}
 }

@@ -2,11 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/podcreep/server/store"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/log"
 )
 
 func handleAccountsGet(w http.ResponseWriter, r *http.Request) {
@@ -26,12 +25,12 @@ type accountsPostResponse struct {
 }
 
 func handleAccountsPost(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
 	var req accountsPostRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		log.Errorf(ctx, "Error decoding: %v", err)
+		log.Printf("Error decoding: %v\n", err)
 		http.Error(w, "Error parsing request.", http.StatusBadRequest)
 		return
 	}
@@ -39,26 +38,26 @@ func handleAccountsPost(w http.ResponseWriter, r *http.Request) {
 
 	acct, err := store.SaveAccount(ctx, req.Username, req.Password)
 	if err != nil {
-		log.Errorf(ctx, "Error saving account: %v", err)
+		log.Printf("Error saving account: %v\n", err)
 		http.Error(w, "Error saving account.", http.StatusInternalServerError)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(&accountsPostResponse{Cookie: acct.Cookie})
 	if err != nil {
-		log.Errorf(ctx, "Error encoding account: %v", err)
+		log.Printf("Error encoding account: %v\n", err)
 		http.Error(w, "Error encoding account.", http.StatusInternalServerError)
 		return
 	}
 }
 
 func handleAccountsLoginPost(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
 	var req accountsPostRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		log.Errorf(ctx, "Error decoding: %v", err)
+		log.Printf("Error decoding: %v\n", err)
 		http.Error(w, "Error parsing request.", http.StatusBadRequest)
 		return
 	}
@@ -66,7 +65,7 @@ func handleAccountsLoginPost(w http.ResponseWriter, r *http.Request) {
 
 	acct, err := store.LoadAccountByUsername(ctx, req.Username, req.Password)
 	if err != nil {
-		log.Errorf(ctx, "Error saving account: %v", err)
+		log.Printf("Error saving account: %v\n", err)
 		http.Error(w, "Error saving account.", http.StatusInternalServerError)
 		return
 	}
@@ -78,7 +77,7 @@ func handleAccountsLoginPost(w http.ResponseWriter, r *http.Request) {
 
 	err = json.NewEncoder(w).Encode(&accountsPostResponse{Cookie: acct.Cookie})
 	if err != nil {
-		log.Errorf(ctx, "Error encoding account: %v", err)
+		log.Printf("Error encoding account: %v\n", err)
 		http.Error(w, "Error encoding account.", http.StatusInternalServerError)
 		return
 	}

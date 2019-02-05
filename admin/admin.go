@@ -4,19 +4,16 @@ package admin
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/log"
-	"google.golang.org/appengine/urlfetch"
 )
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
-	//ctx := appengine.NewContext(r)
 	data := struct {
 	}{}
 
@@ -24,10 +21,12 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
+	log.Printf("loading podcasts...\n")
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
+		log.Printf("error: %v\n", err)
 		// TODO: handle error
 	}
 
@@ -37,8 +36,6 @@ func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
-
 	if r.Method == "GET" {
 		render(w, "podcast-add.html", nil)
 		return
@@ -47,17 +44,16 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 	// It's a POST, so first, grab the URL of the RSS feed.
 	r.ParseForm()
 	url := r.Form.Get("url")
-	log.Infof(ctx, "Fetching RSS URL: %s", url)
+	log.Printf("Fetching RSS URL: %s\n", url)
 
 	// Fetch the RSS feed via a HTTP request.
-	fetchClient := urlfetch.Client(ctx)
-	resp, err := fetchClient.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
 		// TODO: report error more nicely than this
 		http.Error(w, fmt.Sprintf("Error fetching URL: %s: %v", url, err), http.StatusInternalServerError)
 		return
 	}
-	log.Infof(ctx, "Fetched %d bytes, status %d %s, type %s", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
+	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
 	if resp.StatusCode != 200 {
 		http.Error(w, fmt.Sprintf("Error fetching URL: %s status=%d", url, resp.StatusCode), http.StatusInternalServerError)
 		return
@@ -83,7 +79,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
 		// TODO: handle error
 	}
@@ -100,7 +96,7 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
 		// TODO: handle error
 	}
 
-	log.Infof(ctx, "Saving: %v", podcast)
+	log.Printf("Saving: %v\n", podcast)
 	id, err := store.SavePodcast(ctx, podcast)
 	if err != nil {
 		// TODO: handle error

@@ -10,8 +10,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
-
-	"google.golang.org/appengine"
 )
 
 func handleDefault(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +34,7 @@ func main() {
 
 	var handler http.Handler
 	handler = r
-	if appengine.IsDevAppServer() {
+	if os.Getenv("RUN_WITH_DEVAPPSERVER") != "" {
 		// Allow requests from other domains in dev mode (in particular, the angular stuff will be
 		// running on a different domain in dev mode).
 		handler = handlers.CORS(
