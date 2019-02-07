@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"log"
 	"sort"
 	"time"
 
@@ -26,12 +27,16 @@ type Podcast struct {
 	// The URL of the podcast's RSS feed.
 	FeedURL string `datastore:",noindex" json:"-"`
 
-	// Subscribers is the list of account IDs that are subscribed to this podcast. Actual settings
-	// and whatnot for the subscriptions are stored with each account.
+	// Subscribers is the list of account IDs that are subscribed to this podcast. Each entry is
+	// actually two numbers, the first is the account ID and the second is the subscription ID. This
+	// is just because we can't easily do maps in the data store.
 	Subscribers []int64 `json:"-"`
 
 	// Episodes is the list of episodes that belong to this podcast.
 	Episodes []*Episode `datastore:"-" json:"episodes"`
+
+	// If non-zero, this is the ID of the subscription that the current user has to this podcast.
+	SubscriptionID int64 `datastore:"-" json:"subscriptionID"`
 }
 
 // Episode is a single episode in a podcast.
@@ -114,6 +119,7 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
+	log.Printf("LoadPodcasts...\n")
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
@@ -124,6 +130,7 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 	for t := ds.Run(ctx, q); ; {
 		var podcast Podcast
 		key, err := t.Next(&podcast)
+		log.Printf("err = %v\n", err)
 		if err == iterator.Done {
 			break
 		} else if err != nil {

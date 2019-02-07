@@ -97,6 +97,19 @@ func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Sub
 	return s, nil
 }
 
+// DeleteSubscription deletes a subscription for the given podcast.
+func DeleteSubscription(ctx context.Context, acct *Account, subscriptionID int64) error {
+	acctKey := datastore.IDKey("account", acct.ID, nil)
+
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return err
+	}
+
+	key := datastore.IDKey("subscription", subscriptionID, acctKey)
+	return ds.Delete(ctx, key)
+}
+
 // GetSubscriptions return all of the subscriptions owned by the given account.
 func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
 	var subscriptions []*Subscription
@@ -171,6 +184,7 @@ func LoadAccountByCookie(ctx context.Context, cookie string) (*Account, error) {
 	for row := ds.Run(ctx, q); ; {
 		var acct Account
 		key, err := row.Next(&acct)
+
 		if err != nil {
 			if err == iterator.Done {
 				return nil, fmt.Errorf("user with cookie '%s' not found", cookie)

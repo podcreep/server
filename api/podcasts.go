@@ -21,7 +21,6 @@ func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if _, err := authenticate(ctx, r); err != nil {
-		log.Printf("%v\n", err)
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
 	}
@@ -44,13 +43,12 @@ func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handlePodcastGet handles requests to view all the podcasts we have in our DB.
-// TODO: support filtering, sorting, paging, etc etc.
+// handlePodcastGet handles requests to view a single podcast.
 func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	vars := mux.Vars(r)
 
-	_, err := authenticate(ctx, r)
+	acct, err := authenticate(ctx, r)
 	if err != nil {
 		log.Printf("Error authenticating: %v\n", err)
 		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
@@ -69,6 +67,13 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error fetching podcast: %v\n", err)
 		http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
 		return
+	}
+
+	// Check whether this podcast is subscribed by the current user or not.
+	for i := 0; i < len(p.Subscribers); i += 2 {
+		if p.Subscribers[i] == acct.ID {
+			p.SubscriptionID = p.Subscribers[i+1]
+		}
 	}
 
 	if r.URL.Query().Get("refresh") == "1" {

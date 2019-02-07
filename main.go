@@ -39,7 +39,7 @@ func main() {
 		// running on a different domain in dev mode).
 		handler = handlers.CORS(
 			handlers.AllowedOrigins([]string{"*"}),
-			handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "DELETE", "OPTIONS"}),
 			handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
 	}
 
