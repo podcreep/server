@@ -70,9 +70,17 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check whether this podcast is subscribed by the current user or not.
+	log.Printf("checking for subscriptions...\n")
 	for i := 0; i < len(p.Subscribers); i += 2 {
+		log.Printf("%d == %d ?\n", p.Subscribers[i], acct.ID)
 		if p.Subscribers[i] == acct.ID {
-			p.SubscriptionID = p.Subscribers[i+1]
+			log.Printf("loading subscription...\n")
+			sub, err := store.GetSubscription(ctx, acct, p.Subscribers[i+1])
+			if err != nil {
+				log.Printf("Error loading subscription: %v\n", err)
+				// Just ignore the error...
+			}
+			p.Subscription = sub
 		}
 	}
 

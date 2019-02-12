@@ -126,6 +126,14 @@ func DeleteSubscription(ctx context.Context, acct *Account, subscriptionID int64
 	return ds.Delete(ctx, key)
 }
 
+func populateSubscription(sub *Subscription) {
+	sub.JSONPositions = make(map[string]int32)
+	for i := 0; i < len(sub.Positions); i += 2 {
+		s := strconv.FormatInt(sub.Positions[i], 10)
+		sub.JSONPositions[s] = int32(sub.Positions[i+1])
+	}
+}
+
 // GetSubscriptions return all of the subscriptions owned by the given account.
 func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
 	var subscriptions []*Subscription
@@ -148,18 +156,33 @@ func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, erro
 		}
 
 		subscription.ID = key.ID
-		subscription.JSONPositions = make(map[string]int32)
-		for i := 0; i < len(subscription.Positions); i += 2 {
-			s := strconv.FormatInt(subscription.Positions[i], 10)
-			if err == nil {
-				subscription.JSONPositions[s] = int32(subscription.Positions[i+1])
-			}
-		}
+		populateSubscription(&subscription)
 
 		subscriptions = append(subscriptions, &subscription)
 	}
 
 	return subscriptions, nil
+}
+
+// GetSubscription returns the single subscription with the given ID from the given acccount.
+func GetSubscription(ctx context.Context, acct *Account, subID int64) (*Subscription, error) {
+	acctKey := datastore.IDKey("account", acct.ID, nil)
+	subKey := datastore.IDKey("subscription", subID, acctKey)
+
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	sub := new(Subscription)
+	err = ds.Get(ctx, subKey, sub)
+	if err != nil {
+		return nil, fmt.Errorf("error loading subscription: %v", err)
+	}
+
+	log.Printf("fetched a subscription: %v", sub)
+	populateSubscription(sub)
+	return sub, nil
 }
 
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil

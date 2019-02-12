@@ -35,8 +35,8 @@ type Podcast struct {
 	// Episodes is the list of episodes that belong to this podcast.
 	Episodes []*Episode `datastore:"-" json:"episodes"`
 
-	// If non-zero, this is the ID of the subscription that the current user has to this podcast.
-	SubscriptionID int64 `datastore:"-" json:"subscriptionID"`
+	// If non-nil, this is the subscription that the current user has to this podcast.
+	Subscription *Subscription `datastore:"-" json:"subscription"`
 }
 
 // Episode is a single episode in a podcast.
