@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log"
+	"strconv"
 
 	"cloud.google.com/go/datastore"
 	"golang.org/x/crypto/bcrypt"
@@ -23,8 +24,26 @@ type Account struct {
 
 // Subscription represents a subscription to a podcast. It is a child entity of the account.
 type Subscription struct {
-	ID        int64 `datastore:"-" json:"id"`
+	ID int64 `datastore:"-" json:"id"`
+
+	// PodcastID is the identified of the podcast that you're subscribed to.
 	PodcastID int64 `json:"podcastID"`
+
+	// OldestUnlistenedEpisodeID is the oldest episode ID that hasn't been listened to. This allows us
+	// to keep Positions short, by truncating it to only include episodes after this one. An episode
+	// can be explicitly in Positions even if it's older than this.
+	OldestUnlistenedEpisodeID int64 `json:"oldestUnlistenedEpisodeID"`
+
+	// Positions is an array of episodeID,offset integer. The first integer is the identifier of the
+	// episide that is being played. The second integer is the offset (in seconds) that playback is
+	// up to for the given user. If the second integer is negative, then the episode has been fully
+	// played.
+	Positions []int64 `json:"-"`
+
+	// JSONPositions is a nicer encoding of Positions for JSON. The key is the episode ID (as a
+	// string, because that's what JSON requires), and the value is the offset in seconds that you're
+	// up to (again, negative for completely-played episodes).
+	JSONPositions map[string]int32 `datastore:"-" json:"positions"`
 }
 
 func createCookie() (string, error) {
@@ -76,25 +95,22 @@ func SaveAccount(ctx context.Context, username, password string) (*Account, erro
 }
 
 // SaveSubscription saves a new subscription to the data store.
-func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) (*Subscription, error) {
+func SaveSubscription(ctx context.Context, acct *Account, sub *Subscription) (*Subscription, error) {
 	acctKey := datastore.IDKey("account", acct.ID, nil)
-	key := datastore.IDKey("subscription", 0, acctKey)
+	key := datastore.IDKey("subscription", sub.ID, acctKey)
 
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
-	s := &Subscription{
-		PodcastID: podcastID,
-	}
-	key, err = ds.Put(ctx, key, s)
+	key, err = ds.Put(ctx, key, sub)
 	if err != nil {
 		return nil, fmt.Errorf("error storing subscription: %v", err)
 	}
 
-	s.ID = key.ID
-	return s, nil
+	sub.ID = key.ID
+	return sub, nil
 }
 
 // DeleteSubscription deletes a subscription for the given podcast.
@@ -123,12 +139,21 @@ func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, erro
 	q := datastore.NewQuery("subscription").Ancestor(acctKey)
 	for row := ds.Run(ctx, q); ; {
 		var subscription Subscription
-		_, err := row.Next(&subscription)
+		key, err := row.Next(&subscription)
 		if err != nil {
 			if err == iterator.Done {
 				break
 			}
 			return nil, err
+		}
+
+		subscription.ID = key.ID
+		subscription.JSONPositions = make(map[string]int32)
+		for i := 0; i < len(subscription.Positions); i += 2 {
+			s := strconv.FormatInt(subscription.Positions[i], 10)
+			if err == nil {
+				subscription.JSONPositions[s] = int32(subscription.Positions[i+1])
+			}
 		}
 
 		subscriptions = append(subscriptions, &subscription)

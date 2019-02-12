@@ -94,7 +94,10 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s, err := store.SaveSubscription(ctx, acct, podcastID)
+	s := &store.Subscription{
+		PodcastID: podcastID,
+	}
+	s, err = store.SaveSubscription(ctx, acct, s)
 	if err != nil {
 		log.Printf("Error saving subscription: %v\n", err)
 		http.Error(w, "Error saving subscription", http.StatusInternalServerError)
