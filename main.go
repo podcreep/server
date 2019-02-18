@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
+	"github.com/podcreep/server/cron"
 )
 
 func handleDefault(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +28,9 @@ func main() {
 		panic(err)
 	}
 	if err := api.Setup(r); err != nil {
+		panic(err)
+	}
+	if err := cron.Setup(r); err != nil {
 		panic(err)
 	}
 

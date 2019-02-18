@@ -66,6 +66,8 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Decoded: %v", feed)
+
 	podcast := store.Podcast{
 		Title:       feed.Channel.Title,
 		Description: feed.Channel.Description,

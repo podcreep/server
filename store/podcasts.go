@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"log"
 	"sort"
 	"time"
 
@@ -119,7 +118,6 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	log.Printf("LoadPodcasts...\n")
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
@@ -130,7 +128,6 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 	for t := ds.Run(ctx, q); ; {
 		var podcast Podcast
 		key, err := t.Next(&podcast)
-		log.Printf("err = %v\n", err)
 		if err == iterator.Done {
 			break
 		} else if err != nil {

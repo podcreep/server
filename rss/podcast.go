@@ -31,6 +31,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		return fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
+	log.Printf(" - updating %d items.\n", len(feed.Channel.Items))
 	for _, item := range feed.Channel.Items {
 		pubDate, err := parsePubDate(item.PubDate)
 		if err != nil {
@@ -46,8 +47,10 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		}
 
 		// If it's an existing episode, match by GUID.
+		log.Printf(" - (%d existing episodes)\n", len(p.Episodes))
 		for i, existing := range p.Episodes {
 			if existing.GUID == ep.GUID {
+				log.Printf(" - found an existing one (%v == %v).\n", existing.GUID, ep.GUID)
 				ep.ID = existing.ID
 				// Remove this element from the podcasts episodes, we'll re-add it later
 				p.Episodes = append(p.Episodes[:i], p.Episodes[i+1:]...)
