@@ -16,9 +16,10 @@ Go 1.11 is required to run the server.
 
 ## Running locally
 
-    $ dev_appserver.py <path-to>\server --enable_host_checking 0
+    $ dev_appserver.py <path-to>\server --enable_host_checking 0 \
+        --support_datastore_emulator=true --datastore_emulator_port=12783
 
-The `--enable_host_checking 0` flag is to allow you to connect to the server via localhost, 127.0.0.1, or your machine's hostname. It's entirely optional.
+The `--enable_host_checking 0` flag is to allow you to connect to the server via localhost, 127.0.0.1, or your machine's hostname. It's entirely optional. We also want to use the datastore emulator on the specific port 12783, since we reference that in the app.yaml file.
 
 ## Running a client
 
