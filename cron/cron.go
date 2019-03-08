@@ -32,7 +32,7 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 		task := &taskqueue.Task{
 			Path:   fmt.Sprintf("/cron/tasks/update-podcast/%d", p.ID),
 			Method: "GET",
-			Name:   fmt.Sprintf("update-%d", p.ID), // TODO: urlify the title or something
+			//Name:   fmt.Sprintf("update-%d", p.ID), // TODO: urlify the title or something
 		}
 		_, err := taskqueue.Add(ctx, task, "podcast-updater")
 		if err != nil {

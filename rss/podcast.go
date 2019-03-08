@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/podcreep/server/store"
 )
@@ -15,12 +16,27 @@ import (
 // episodes we have stored for the podcast. This method updates the passed-in store.Podcast with
 // the latest details.
 func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
+	client := &http.Client{}
+
 	// Fetch the RSS feed via a HTTP request.
-	resp, err := http.Get(p.FeedURL)
+	req, err := http.NewRequest("GET", p.FeedURL, nil)
+	if err != nil {
+		return err
+	}
+
+	if !p.LastFetchTime.IsZero() {
+		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error fetching URL: %s: %v", p.FeedURL, err)
 	}
 	log.Printf("Fetched %d bytes, status %d %s\n", resp.ContentLength, resp.StatusCode, resp.Status)
+	if resp.StatusCode == 304 {
+		log.Printf("Podcast %d '%s' has not changed since %s, not updating\n", p.ID, p.Title, p.LastFetchTime)
+		return nil
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("error fetching URL: %s status=%d", p.FeedURL, resp.StatusCode)
 	}
@@ -65,6 +81,10 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		ep.ID = id
 		p.Episodes = append(p.Episodes, ep)
 	}
+
+	// Update the last fetch time.
+	p.LastFetchTime = time.Now()
+	store.SavePodcast(ctx, p)
 
 	sort.Slice(p.Episodes, func(i, j int) bool {
 		return p.Episodes[j].PubDate.Before(p.Episodes[i].PubDate)

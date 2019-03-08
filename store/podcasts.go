@@ -26,6 +26,11 @@ type Podcast struct {
 	// The URL of the podcast's RSS feed.
 	FeedURL string `datastore:",noindex" json:"-"`
 
+	// The time that this podcast was last fetched *and* we actually found a new episode. When
+	// fetching the RSS feed again, we'll tell the server to only give us new data if it has been
+	// changed since this time.
+	LastFetchTime time.Time `datastore:",noindex" json:"lastFetchTime"`
+
 	// Subscribers is the list of account IDs that are subscribed to this podcast. Each entry is
 	// actually two numbers, the first is the account ID and the second is the subscription ID. This
 	// is just because we can't easily do maps in the data store.
