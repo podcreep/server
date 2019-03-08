@@ -11,6 +11,8 @@ import (
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
 	"github.com/podcreep/server/cron"
+
+	"google.golang.org/appengine"
 )
 
 func handleDefault(w http.ResponseWriter, r *http.Request) {
@@ -48,5 +50,6 @@ func main() {
 	}
 
 	http.Handle("/", handler)
+	appengine.Main()
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }

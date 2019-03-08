@@ -1,0 +1,4 @@
+cron:
+- description: "Sync podcasts"
+  url: /cron/check-updates
+  schedule: every 47 minutes

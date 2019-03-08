@@ -3,7 +3,6 @@ runtime: go111
 nobuild_files: (admin|api|rss|store)
 
 env_variables:
-  DATASTORE_EMULATOR_HOST: localhost:12783
   DATASTORE_PROJECT_ID: podcreep
 
 includes:

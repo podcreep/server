@@ -1,0 +1,3 @@
+queue:
+- name: podcast-updater
+  rate: 1/s
