@@ -63,6 +63,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		}
 
 		// If it's an existing episode, match by GUID.
+		found := false
 		log.Printf(" - (%d existing episodes)\n", len(p.Episodes))
 		for i, existing := range p.Episodes {
 			if existing.GUID == ep.GUID {
@@ -70,15 +71,20 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 				ep.ID = existing.ID
 				// Remove this element from the podcasts episodes, we'll re-add it later
 				p.Episodes = append(p.Episodes[:i], p.Episodes[i+1:]...)
+				found = true
 				break
 			}
 		}
 
-		id, err := store.SaveEpisode(ctx, p, ep)
-		if err != nil {
-			return fmt.Errorf("error saving episode: %v", err)
+		// Note: we don't update existing episodes, there's not really much point.
+		if !found {
+			id, err := store.SaveEpisode(ctx, p, ep)
+			if err != nil {
+				return fmt.Errorf("error saving episode: %v", err)
+			}
+			ep.ID = id
 		}
-		ep.ID = id
+
 		p.Episodes = append(p.Episodes, ep)
 	}
 
