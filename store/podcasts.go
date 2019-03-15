@@ -27,7 +27,7 @@ type Podcast struct {
 	ImageURL string `datastore:",noindex" json:"imageUrl"`
 
 	// The URL of the podcast's RSS feed.
-	FeedURL string `datastore:",noindex" json:"-"`
+	FeedURL string `datastore:",noindex" json:"feedUrl"`
 
 	// The time that this podcast was last fetched *and* we actually found a new episode. When
 	// fetching the RSS feed again, we'll tell the server to only give us new data if it has been
@@ -69,6 +69,20 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	item := &memcache.Item{
+		Key: fmt.Sprintf("podcast:%d", key.ID),
+	}
+	item.Value, err = json.Marshal(p)
+	if err != nil {
+		// TODO: report error
+	} else {
+		err := memcache.Set(ctx, item)
+		if err != nil {
+			// TODO: report error
+		}
+	}
+
 	return key.ID, nil
 }
 
