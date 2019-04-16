@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,32 +26,25 @@ type subscriptionDetailsList struct {
 	Subscriptions []subscriptionDetails `json:"subscriptions"`
 }
 
-// handleSubscriptionsGet handles a GET request for /api/subscriptions, and returns all of the
-// user's subscriptions.
-func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+type subscriptionsSyncPostRequest struct {
+	// TODO: stuff here...
+}
 
-	acct, err := authenticate(ctx, r)
-	if err != nil {
-		log.Printf("Error authenticating: %v\n", err)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		return
-	}
+type subscriptionsSyncPostResponse struct {
+	Subscriptions []subscriptionDetails `json:"subscriptions"`
+}
 
+func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscriptionDetails, error) {
 	subs, err := store.GetSubscriptions(ctx, acct)
 	if err != nil {
-		log.Printf("Error fetching subscriptions: %v\n", err)
-		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 	log.Printf("Got %d subscription(s) for %s\n", len(subs), acct.Username)
 
 	// TODO: don't fetch all the podcasts just to filter out a few...
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
-		log.Printf("Error fetching podcasts: %v\n", err)
-		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	var details []subscriptionDetails
@@ -64,8 +58,30 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		details = append(details, d)
 	}
 
+	return details, nil
+}
+
+// handleSubscriptionsGet handles a GET request for /api/subscriptions, and returns all of the
+// user's subscriptions.
+func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	acct, err := authenticate(ctx, r)
+	if err != nil {
+		log.Printf("Error authenticating: %v\n", err)
+		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+		return
+	}
+
+	subscriptionDetails, err := getSubscriptions(ctx, acct)
+	if err != nil {
+		log.Printf("Error getting subscriptions: %v\n", err)
+		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
+		return
+	}
+
 	err = json.NewEncoder(w).Encode(&subscriptionDetailsList{
-		Subscriptions: details,
+		Subscriptions: subscriptionDetails,
 	})
 	if err != nil {
 		log.Printf("Error encoding subscriptions: %v\n", err)
@@ -212,4 +228,55 @@ func handleSubscriptionsDelete(w http.ResponseWriter, r *http.Request) {
 	//	http.Error(w, "Error encoding account.", http.StatusInternalServerError)
 	//	return
 	//}
+}
+
+// handleSubscriptionsSync handles a request for /api/subscriptions/sync
+func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req subscriptionsSyncPostRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		log.Printf("Error parsing request: %v\n", err)
+		http.Error(w, "Error parsing request.", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	acct, err := authenticate(ctx, r)
+	if err != nil {
+		log.Printf("Error authenticating: %v\n", err)
+		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+		return
+	}
+
+	subscriptionDetails, err := getSubscriptions(ctx, acct)
+	if err != nil {
+		log.Printf("Error getting subscriptions: %v\n", err)
+		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
+		return
+	}
+
+	// For each podcast, grab the episodes that the client doesn't yet have.
+	for i, sub := range subscriptionDetails {
+		p, err := store.GetPodcast(ctx, sub.Podcast.ID)
+		if err != nil {
+			log.Printf("Error fetching podcast: %v\n", err)
+			http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
+			return
+		}
+
+		// TODO: don't return episodes they've already got
+		subscriptionDetails[i].Podcast = p
+	}
+	// TODO: also get the latest positions...
+
+	err = json.NewEncoder(w).Encode(&subscriptionsSyncPostResponse{
+		Subscriptions: subscriptionDetails,
+	})
+	if err != nil {
+		log.Printf("Error encoding subscriptions: %v\n", err)
+		http.Error(w, "Error encoding subscriptions.", http.StatusInternalServerError)
+		return
+	}
 }
