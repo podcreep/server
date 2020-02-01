@@ -8,4 +8,5 @@ require (
 	golang.org/x/crypto v0.0.0-20190131182504-b8fe1690c613
 	google.golang.org/api v0.1.0
 	google.golang.org/appengine v1.3.0
+	google.golang.org/genproto v0.0.0-20190122154452-ba6ebe99b011
 )

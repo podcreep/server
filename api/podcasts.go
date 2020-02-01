@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"google.golang.org/appengine"
+
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
@@ -18,7 +20,7 @@ type podcastList struct {
 // handlePodcastsGet handles requests to view all the podcasts we have in our DB.
 // TODO: support filtering, sorting, paging, etc etc.
 func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx := appengine.NewContext(r)
 
 	if _, err := authenticate(ctx, r); err != nil {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)

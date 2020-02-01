@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
-	"sort"
+	"encoding/json"
+	"fmt"
 	"time"
+
+	"google.golang.org/appengine/memcache"
 
 	"cloud.google.com/go/datastore"
 	"google.golang.org/api/iterator"
@@ -24,7 +27,12 @@ type Podcast struct {
 	ImageURL string `datastore:",noindex" json:"imageUrl"`
 
 	// The URL of the podcast's RSS feed.
-	FeedURL string `datastore:",noindex" json:"-"`
+	FeedURL string `datastore:",noindex" json:"feedUrl"`
+
+	// The time that this podcast was last fetched *and* we actually found a new episode. When
+	// fetching the RSS feed again, we'll tell the server to only give us new data if it has been
+	// changed since this time.
+	LastFetchTime time.Time `datastore:",noindex" json:"lastFetchTime"`
 
 	// Subscribers is the list of account IDs that are subscribed to this podcast. Each entry is
 	// actually two numbers, the first is the account ID and the second is the subscription ID. This
@@ -61,6 +69,20 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	item := &memcache.Item{
+		Key: fmt.Sprintf("podcast:%d", key.ID),
+	}
+	item.Value, err = json.Marshal(p)
+	if err != nil {
+		// TODO: report error
+	} else {
+		err := memcache.Set(ctx, item)
+		if err != nil {
+			// TODO: report error
+		}
+	}
+
 	return key.ID, nil
 }
 
@@ -82,20 +104,34 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
 
 // GetPodcast returns the podcast with the given ID.
 func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
+	podcast := &Podcast{}
+
+	item, err := memcache.Get(ctx, fmt.Sprintf("podcast:%d", podcastID))
+	if err != nil && err != memcache.ErrCacheMiss {
+		return nil, err
+	}
+	if item != nil {
+		if err := json.Unmarshal(item.Value, podcast); err != nil {
+			return nil, err
+		}
+		return podcast, nil
+	}
+	item = &memcache.Item{Key: fmt.Sprintf("podcast:%d", podcastID)}
+
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
 	key := datastore.IDKey("podcast", podcastID, nil)
-	podcast := &Podcast{}
+
 	err = ds.Get(ctx, key, podcast)
 	if err != nil {
 		return nil, err
 	}
 	podcast.ID = key.ID
 
-	q := datastore.NewQuery("episode").Ancestor(key)
+	q := datastore.NewQuery("episode").Ancestor(key).Order("-PubDate").Limit(20)
 	for t := ds.Run(ctx, q); ; {
 		var ep Episode
 		key, err := t.Next(&ep)
@@ -108,9 +144,16 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 		podcast.Episodes = append(podcast.Episodes, &ep)
 	}
 
-	sort.Slice(podcast.Episodes, func(i, j int) bool {
-		return podcast.Episodes[j].PubDate.Before(podcast.Episodes[i].PubDate)
-	})
+	item.Value, err = json.Marshal(podcast)
+	if err != nil {
+		// We'll log it but continue, it means it won't be cached...
+		// TODO
+	} else {
+		err := memcache.Set(ctx, item)
+		if err != nil {
+			// TODO: report error
+		}
+	}
 
 	return podcast, nil
 }
