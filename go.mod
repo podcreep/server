@@ -1,12 +1,23 @@
 module github.com/podcreep/server
 
 require (
-	cloud.google.com/go v0.35.1
+	cloud.google.com/go v0.54.0
+	cloud.google.com/go/datastore v1.1.0
+	git.apache.org/thrift.git v0.0.0-20180902110319-2566ecd5d999 // indirect
+	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
+	github.com/ghodss/yaml v1.0.0 // indirect
+	github.com/google/btree v1.0.0 // indirect
 	github.com/gorilla/handlers v1.4.0
 	github.com/gorilla/mux v1.7.0
 	github.com/gorilla/schema v1.0.2
-	golang.org/x/crypto v0.0.0-20190131182504-b8fe1690c613
-	google.golang.org/api v0.1.0
-	google.golang.org/appengine v1.3.0
-	google.golang.org/genproto v0.0.0-20190122154452-ba6ebe99b011
+	github.com/grpc-ecosystem/grpc-gateway v1.5.0 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/openzipkin/zipkin-go v0.1.1 // indirect
+	github.com/prometheus/client_golang v0.8.0 // indirect
+	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e // indirect
+	github.com/prometheus/procfs v0.0.0-20180725123919-05ee40e3a273 // indirect
+	golang.org/x/build v0.0.0-20190111050920-041ab4dc3f9d // indirect
+	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
+	google.golang.org/api v0.20.0
+	google.golang.org/genproto v0.0.0-20200305110556-506484158171
 )

@@ -2,11 +2,8 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
-
-	"google.golang.org/appengine/memcache"
 
 	"cloud.google.com/go/datastore"
 	"google.golang.org/api/iterator"
@@ -70,19 +67,6 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 		return 0, err
 	}
 
-	item := &memcache.Item{
-		Key: fmt.Sprintf("podcast:%d", key.ID),
-	}
-	item.Value, err = json.Marshal(p)
-	if err != nil {
-		// TODO: report error
-	} else {
-		err := memcache.Set(ctx, item)
-		if err != nil {
-			// TODO: report error
-		}
-	}
-
 	return key.ID, nil
 }
 
@@ -105,18 +89,6 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
 // GetPodcast returns the podcast with the given ID.
 func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
-
-	item, err := memcache.Get(ctx, fmt.Sprintf("podcast:%d", podcastID))
-	if err != nil && err != memcache.ErrCacheMiss {
-		return nil, err
-	}
-	if item != nil {
-		if err := json.Unmarshal(item.Value, podcast); err != nil {
-			return nil, err
-		}
-		return podcast, nil
-	}
-	item = &memcache.Item{Key: fmt.Sprintf("podcast:%d", podcastID)}
 
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
@@ -144,17 +116,6 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 		podcast.Episodes = append(podcast.Episodes, &ep)
 	}
 
-	item.Value, err = json.Marshal(podcast)
-	if err != nil {
-		// We'll log it but continue, it means it won't be cached...
-		// TODO
-	} else {
-		err := memcache.Set(ctx, item)
-		if err != nil {
-			// TODO: report error
-		}
-	}
-
 	return podcast, nil
 }
 
@@ -163,7 +124,7 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error creating datastore client: %v", err)
 	}
 
 	q := datastore.NewQuery("podcast")

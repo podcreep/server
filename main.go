@@ -11,8 +11,6 @@ import (
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
 	"github.com/podcreep/server/cron"
-
-	"google.golang.org/appengine"
 )
 
 func handleDefault(w http.ResponseWriter, r *http.Request) {
@@ -40,16 +38,16 @@ func main() {
 
 	var handler http.Handler
 	handler = r
-	if os.Getenv("RUN_WITH_DEVAPPSERVER") != "" {
-		// Allow requests from other domains in dev mode (in particular, the angular stuff will be
-		// running on a different domain in dev mode).
-		handler = handlers.CORS(
-			handlers.AllowedOrigins([]string{"*"}),
-			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
-			handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
-	}
+	// TODO(dean): Have another way to figure out we're dev mode (probably just a different env var?)
+	//	if os.Getenv("RUN_WITH_DEVAPPSERVER") != "" {
+	// Allow requests from other domains in dev mode (in particular, the angular stuff will be
+	// running on a different domain in dev mode).
+	handler = handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),
+		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
+	//	}
 
 	http.Handle("/", handler)
-	appengine.Main()
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }

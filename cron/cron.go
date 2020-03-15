@@ -11,12 +11,12 @@ import (
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
 
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/taskqueue"
+	cloudtasks "cloud.google.com/go/cloudtasks/apiv2"
+	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
 )
 
 func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
-	ctx := appengine.NewContext(r)
+	ctx := r.Context()
 
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
@@ -25,18 +25,31 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client, err := cloudtasks.NewClient(ctx)
+	if err != nil {
+		log.Printf("Error creating CloudTask client: %v\n", err)
+		http.Error(w, "Error loading podcasts.", http.StatusInternalServerError)
+		return
+	}
+
 	log.Printf("Got %d podcasts.\n", len(podcasts))
 	for _, p := range podcasts {
-		// TODO: convert to Cloud Tasks API when I can figure out how to make it
-		// execute tasks in dev_appserver...
-		task := &taskqueue.Task{
-			Path:   fmt.Sprintf("/cron/tasks/update-podcast/%d", p.ID),
-			Method: "GET",
-			//Name:   fmt.Sprintf("update-%d", p.ID), // TODO: urlify the title or something
+		req := &taskspb.CreateTaskRequest{
+			Parent: "projects/podcreep/locations/us-central1/queues/podcast-updater",
+			Task: &taskspb.Task{
+				// https://godoc.org/google.golang.org/genproto/googleapis/cloud/tasks/v2#HttpRequest
+				MessageType: &taskspb.Task_HttpRequest{
+					HttpRequest: &taskspb.HttpRequest{
+						HttpMethod: taskspb.HttpMethod_GET,
+						Url:        fmt.Sprintf("/cron/tasks/update-podcast/%d", p.ID),
+					},
+				},
+			},
 		}
-		_, err := taskqueue.Add(ctx, task, "podcast-updater")
+
+		_, err := client.CreateTask(ctx, req)
 		if err != nil {
-			log.Printf("Error adding task to taskqueue: %v\n", err)
+			log.Printf("Error creating CloudTask task: %v\n", err)
 		}
 	}
 }
