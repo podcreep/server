@@ -1,9 +1,0 @@
-runtime: go112
-
-nobuild_files: (admin|api|rss|store)
-
-env_variables:
-  DATASTORE_PROJECT_ID: podcreep
-
-includes:
-- app-base.yaml
