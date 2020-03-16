@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"log"
 	"strconv"
@@ -10,6 +9,8 @@ import (
 	"cloud.google.com/go/datastore"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/api/iterator"
+
+	"github.com/podcreep/server/util"
 )
 
 // Account ...
@@ -46,22 +47,6 @@ type Subscription struct {
 	JSONPositions map[string]int32 `datastore:"-" json:"positions"`
 }
 
-func createCookie() (string, error) {
-	var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-	bytes := make([]byte, 20)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", err
-	}
-
-	runes := make([]rune, 20)
-	for i := range bytes {
-		runes[i] = alphabet[int(bytes[i])%len(alphabet)]
-	}
-	return string(runes), nil
-}
-
 // SaveAccount saves an account to the data store.
 func SaveAccount(ctx context.Context, username, password string) (*Account, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -69,7 +54,7 @@ func SaveAccount(ctx context.Context, username, password string) (*Account, erro
 		return nil, fmt.Errorf("error hashing password: %v", err)
 	}
 
-	cookie, err := createCookie()
+	cookie, err := util.CreateCookie()
 	if err != nil {
 		return nil, fmt.Errorf("error creating cookie: %v", err)
 	}

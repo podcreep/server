@@ -5,7 +5,6 @@ handlers:
   static_dir: admin/static
 - url: /admin.*
   script: auto
-  login: admin
 - url: /api.*
   script: auto
 - url: /(.*\.(css|js|ico|png|jpg))$

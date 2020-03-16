@@ -38,15 +38,17 @@ func main() {
 
 	var handler http.Handler
 	handler = r
-	// TODO(dean): Have another way to figure out we're dev mode (probably just a different env var?)
-	//	if os.Getenv("RUN_WITH_DEVAPPSERVER") != "" {
-	// Allow requests from other domains in dev mode (in particular, the angular stuff will be
-	// running on a different domain in dev mode).
-	handler = handlers.CORS(
-		handlers.AllowedOrigins([]string{"*"}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
-		handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
-	//	}
+	if os.Getenv("DEBUG") != "" {
+		// Allow requests from other domains in debug mode (in particular, the angular stuff will be
+		// running on a different domain in debug mode).
+		handler = handlers.CORS(
+			handlers.AllowedOrigins([]string{"*"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+			handlers.AllowedHeaders([]string{"content-type", "authorization"}))(handler)
+	}
+
+	// Add logging to stdout.
+	handler = handlers.LoggingHandler(os.Stdout, handler)
 
 	http.Handle("/", handler)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))

@@ -16,6 +16,7 @@ require (
 	github.com/prometheus/client_golang v0.8.0 // indirect
 	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e // indirect
 	github.com/prometheus/procfs v0.0.0-20180725123919-05ee40e3a273 // indirect
+	github.com/sqs/goreturns v0.0.0-20181028201513-538ac6014518 // indirect
 	golang.org/x/build v0.0.0-20190111050920-041ab4dc3f9d // indirect
 	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
 	google.golang.org/api v0.20.0

@@ -2,16 +2,29 @@
 package admin
 
 import (
-	"encoding/xml"
-	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/schema"
-	"github.com/podcreep/server/rss"
-	"github.com/podcreep/server/store"
+	"github.com/podcreep/server/util"
+
+	oauth2 "google.golang.org/api/oauth2/v2"
 )
+
+const (
+	clientID = "1079678878297-1nb85s5mrvpie8dctf5i23qrlieb16b1.apps.googleusercontent.com"
+)
+
+var (
+	// sessions is the in-memory map we keep our session info in.
+	// TODO(dean): Make this stored in the database or something
+	sessions = make(map[string]sessionInfo)
+)
+
+type sessionInfo struct {
+	email string
+}
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
 	data := struct {
@@ -20,93 +33,98 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	render(w, "index.html", data)
 }
 
-func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	log.Printf("loading podcasts...\n")
-	podcasts, err := store.LoadPodcasts(ctx)
-	if err != nil {
-		log.Printf("error: %v\n", err)
-		// TODO: handle error
-	}
-
-	render(w, "podcast-list.html", map[string]interface{}{
-		"Podcasts": podcasts,
-	})
-}
-
-func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
+func handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		render(w, "podcast-add.html", nil)
+		render(w, "login.html", nil)
 		return
 	}
 
-	// It's a POST, so first, grab the URL of the RSS feed.
-	r.ParseForm()
-	url := r.Form.Get("url")
-	log.Printf("Fetching RSS URL: %s\n", url)
-
-	// Fetch the RSS feed via a HTTP request.
-	resp, err := http.Get(url)
+	err := r.ParseForm()
 	if err != nil {
-		// TODO: report error more nicely than this
-		http.Error(w, fmt.Sprintf("Error fetching URL: %s: %v", url, err), http.StatusInternalServerError)
-		return
-	}
-	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
-	if resp.StatusCode != 200 {
-		http.Error(w, fmt.Sprintf("Error fetching URL: %s status=%d", url, resp.StatusCode), http.StatusInternalServerError)
+		log.Printf("Error parsing form: %v", err)
+		http.Error(w, "Error parsing form", 400)
 		return
 	}
 
-	// Unmarshal the RSS feed into an object we can query.
-	var feed rss.Feed
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		http.Error(w, fmt.Sprintf("Error unmarshalling response: %v", err), http.StatusInternalServerError)
+	svc, err := oauth2.New(&http.Client{})
+	if err != nil {
+		log.Printf("Error getting oauth2 service: %v", err)
+		http.Error(w, "Error getting oauth2 service", 500)
 		return
 	}
 
-	log.Printf("Decoded: %v", feed)
-
-	podcast := store.Podcast{
-		Title:       feed.Channel.Title,
-		Description: feed.Channel.Description,
-		ImageURL:    feed.Channel.Image.URL,
-		FeedURL:     feed.Channel.Link.Href,
+	idToken := r.Form.Get("idToken")
+	tokenInfo, err := svc.Tokeninfo().IdToken(idToken).Do()
+	if err != nil {
+		log.Printf("Error getting tokeninfo: %v", err)
+		http.Error(w, "Error getting tokeninfo", 403)
+		return
 	}
 
-	render(w, "podcast-edit.html", map[string]interface{}{
-		"Podcast": podcast,
-	})
+	if tokenInfo.Email != r.Form.Get("email") {
+		log.Printf("Associated email does not match (given %s, wanted %s)", r.Form.Get("email"), tokenInfo.Email)
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+
+	if tokenInfo.Email != "dean@codeka.com.au" {
+		log.Printf("Someone, not me, has tried to log in: %s", tokenInfo.Email)
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+
+	if tokenInfo.Audience != clientID {
+		log.Printf("Audience does not match (given %s, wanted %s)", tokenInfo.Audience, clientID)
+		http.Error(w, "Forbidden", 403)
+		return
+	}
+
+	cookieValue, err := util.CreateCookie()
+	if err != nil {
+		log.Printf("Error creating cookie: %v", err)
+		http.Error(w, "Error creating cookie", 500)
+		return
+	}
+
+	sessions[cookieValue] = sessionInfo{
+		email: tokenInfo.Email,
+	}
+
+	expire := time.Now().AddDate(0, 0, 1)
+	cookie := http.Cookie{
+		Name:    "sess",
+		Value:   cookieValue,
+		Expires: expire,
+	}
+	http.SetCookie(w, &cookie)
 }
 
-func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	if err := r.ParseForm(); err != nil {
-		// TODO: handle error
-	}
+// authMiddleware is some middleware that ensures the user is authenticated before allowing them
+// access to any pages under /admin (the only exception is you can access /admin/login).
+func authMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/admin/login" {
+			// Anybody can access login, otherwise how can you log in??
+			h.ServeHTTP(w, r)
+			return
+		}
 
-	var podcast *store.Podcast
-	sid := r.Form.Get("id")
-	if sid != "" {
-		// TODO: load podcast
-	} else {
-		podcast = &store.Podcast{}
-	}
+		cookie, err := r.Cookie("sess")
+		if err != nil {
+			log.Printf("No cookie, redirecting to login.")
+			http.Redirect(w, r, "/admin/login", 302)
+			return
+		}
 
-	if err := schema.NewDecoder().Decode(podcast, r.PostForm); err != nil {
-		// TODO: handle error
-	}
+		sess := sessions[cookie.Value]
+		if sess.email != "dean@codeka.com.au" {
+			log.Printf("Invalid cookie value, redirecting to login.")
+			http.Redirect(w, r, "/admin/login", 302)
+			return
+		}
 
-	log.Printf("Saving: %v\n", podcast)
-	id, err := store.SavePodcast(ctx, podcast)
-	if err != nil {
-		// TODO: handle error
-	}
-	podcast.ID = id
-
-	render(w, "podcast-edit.html", map[string]interface{}{
-		"Podcast": podcast,
+		// All good, off you go.
+		h.ServeHTTP(w, r)
 	})
 }
 
@@ -116,10 +134,14 @@ func Setup(r *mux.Router) error {
 		return err
 	}
 
-	r.HandleFunc("/admin", handleHome).Methods("GET")
-	r.HandleFunc("/admin/podcasts", handlePodcastsList).Methods("GET")
-	r.HandleFunc("/admin/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
-	r.HandleFunc("/admin/podcasts/edit", handlePodcastsEditPost).Methods("POST")
+	subr := r.PathPrefix("/admin").Subrouter()
+	subr.Use(authMiddleware)
+
+	subr.HandleFunc("/", handleHome).Methods("GET")
+	subr.HandleFunc("/login", handleLogin).Methods("GET", "POST")
+	subr.HandleFunc("/podcasts", handlePodcastsList).Methods("GET")
+	subr.HandleFunc("/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
+	subr.HandleFunc("/podcasts/edit", handlePodcastsEditPost).Methods("POST")
 
 	return nil
 }
