@@ -13,6 +13,12 @@ set DATASTORE_EMULATOR_HOST_PATH=localhost:12783/datastore
 set DATASTORE_HOST=http://localhost:12783
 set DATASTORE_PROJECT_ID=podcreep
 
+rem Cloud Store properties that we use to connect to the local emulator.
+set CLOUDTASKS_HOST=localhost:8123
+
+rem The URL of our service, used to send task requests back to us, etc.
+set BASE_URL=http://localhost:8080/
+
 rem Let the server know it's running in debug mode.
 set DEBUG=1
 

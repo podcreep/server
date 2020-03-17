@@ -1,9 +1,11 @@
 package cron
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -12,8 +14,27 @@ import (
 	"github.com/podcreep/server/store"
 
 	cloudtasks "cloud.google.com/go/cloudtasks/apiv2"
+	"google.golang.org/api/option"
 	taskspb "google.golang.org/genproto/googleapis/cloud/tasks/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+func newCloudTasksClient(ctx context.Context) (*cloudtasks.Client, error) {
+	cloudTasksHost := os.Getenv("CLOUDTASKS_HOST")
+	if cloudTasksHost != "" {
+		conn, err := grpc.Dial(cloudTasksHost, grpc.WithInsecure())
+		if err != nil {
+			return nil, fmt.Errorf("cannot grpc.Dial: %v", err)
+		}
+
+		clientOpt := option.WithGRPCConn(conn)
+		return cloudtasks.NewClient(ctx, clientOpt)
+	} else {
+		return cloudtasks.NewClient(ctx)
+	}
+}
 
 func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -25,23 +46,41 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := cloudtasks.NewClient(ctx)
+	client, err := newCloudTasksClient(ctx)
 	if err != nil {
 		log.Printf("Error creating CloudTask client: %v\n", err)
 		http.Error(w, "Error loading podcasts.", http.StatusInternalServerError)
 		return
 	}
 
+	parent := "projects/podcreep/locations/us-central1"
+	createQueueRequest := taskspb.CreateQueueRequest{
+		Parent: parent,
+		Queue: &taskspb.Queue{
+			Name: parent + "/queues/podcast-updater",
+		},
+	}
+	queue, err := client.CreateQueue(ctx, &createQueueRequest)
+	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.AlreadyExists {
+			// Queue already exists, this is OK.
+		} else {
+			log.Printf("Error creating queue: %v\n", err)
+
+			// TODO: something else?
+		}
+	}
+
 	log.Printf("Got %d podcasts.\n", len(podcasts))
 	for _, p := range podcasts {
 		req := &taskspb.CreateTaskRequest{
-			Parent: "projects/podcreep/locations/us-central1/queues/podcast-updater",
+			Parent: queue.GetName(),
 			Task: &taskspb.Task{
-				// https://godoc.org/google.golang.org/genproto/googleapis/cloud/tasks/v2#HttpRequest
 				MessageType: &taskspb.Task_HttpRequest{
 					HttpRequest: &taskspb.HttpRequest{
 						HttpMethod: taskspb.HttpMethod_GET,
-						Url:        fmt.Sprintf("/cron/tasks/update-podcast/%d", p.ID),
+						Url:        fmt.Sprintf("%s/cron/tasks/update-podcast/%d", os.Getenv("BASE_URL"), p.ID),
 					},
 				},
 			},
