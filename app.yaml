@@ -5,20 +5,8 @@ nobuild_files: (admin|api|rss|store)
 env_variables:
   DATASTORE_PROJECT_ID: podcreep
 
-# TODO(dean): handle static files ourselves so they can work in dev environment as well.
+# All requests route to our script, we handle static files manually.
 handlers:
-- url: /admin/static.*
-  static_dir: admin/static
-- url: /admin.*
+- url: /.*
   script: auto
-- url: /api.*
-  script: auto
-- url: /(.*\.(css|js|ico|png|jpg))$
-  static_files: dist/\1
-  upload: dist/.*
-- url: /($|podcasts.*|discover.*) # TODO: this "/.*" pattern seems to be broken?
-  static_files: dist/index.html
-  upload: dist/index.html
-  http_headers:
-    Content-Type: text/html; charset=utf8
 

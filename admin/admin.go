@@ -134,6 +134,9 @@ func Setup(r *mux.Router) error {
 		return err
 	}
 
+	// Requests to /admin (no trailing slash) redirect to /admin/ (with trailing slash)
+	r.Path("/admin").Handler(http.RedirectHandler("/admin/", http.StatusMovedPermanently))
+
 	subr := r.PathPrefix("/admin").Subrouter()
 	subr.Use(authMiddleware)
 

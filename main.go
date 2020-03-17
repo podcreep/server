@@ -13,8 +13,17 @@ import (
 	"github.com/podcreep/server/cron"
 )
 
-func handleDefault(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello, world!")
+func setupStaticFiles(r *mux.Router) {
+	// The static files under the /admin directory.
+	r.PathPrefix("/admin/static").Handler(http.StripPrefix("/admin/static", http.FileServer(http.Dir("./admin/static"))))
+
+	// All the static files are stored under /dist but we want them to map to /
+	r.Path("/{file:.*}.{ext:js|css|ico|html}").Handler(http.FileServer(http.Dir("./dist")))
+
+	// Every other path, including bare /, maps to the index.html file.
+	r.Path("/{url:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./dist/index.html")
+	})
 }
 
 func main() {
@@ -33,8 +42,7 @@ func main() {
 	if err := cron.Setup(r); err != nil {
 		panic(err)
 	}
-
-	r.HandleFunc("/", handleDefault)
+	setupStaticFiles(r)
 
 	var handler http.Handler
 	handler = r
@@ -51,5 +59,7 @@ func main() {
 	handler = handlers.LoggingHandler(os.Stdout, handler)
 
 	http.Handle("/", handler)
+
+	log.Printf("Server starting on :%s", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }

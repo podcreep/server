@@ -16,7 +16,7 @@
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/admin/login");
     xhr.onload = function() {
-      window.location.href = "/admin"; // TODO(dean): back where you came from?
+      window.location.href = "/admin/"; // TODO(dean): back where you came from?
     };
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
