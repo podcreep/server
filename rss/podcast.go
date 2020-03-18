@@ -16,11 +16,12 @@ import (
 // episodes we have stored for the podcast. This method updates the passed-in store.Podcast with
 // the latest details.
 func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
-	client := &http.Client{}
+	log.Printf("Updating podcast: [%d] %s", p.ID, p.Title)
 
 	// Fetch the RSS feed via a HTTP request.
 	req, err := http.NewRequest("GET", p.FeedURL, nil)
 	if err != nil {
+		log.Printf(" - error creating RSS request: %v", err)
 		return err
 	}
 
@@ -28,13 +29,14 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
 	}
 
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error fetching URL: %s: %v", p.FeedURL, err)
 	}
-	log.Printf("Fetched %d bytes, status %d %s\n", resp.ContentLength, resp.StatusCode, resp.Status)
+	log.Printf(" - fetched %d bytes, status %d %s\n", resp.ContentLength, resp.StatusCode, resp.Status)
 	if resp.StatusCode == 304 {
-		log.Printf("Podcast %d '%s' has not changed since %s, not updating\n", p.ID, p.Title, p.LastFetchTime)
+		log.Printf(" - podcast has not changed since %s, not updating\n", p.LastFetchTime)
 		return nil
 	}
 	if resp.StatusCode != 200 {
@@ -47,11 +49,13 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 		return fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
-	log.Printf(" - updating %d items.\n", len(feed.Channel.Items))
-	for _, item := range feed.Channel.Items {
+	totalEpisodesToUpdate := len(feed.Channel.Items)
+	log.Printf(" - updating %d episodes (%d existing episodes)\n", totalEpisodesToUpdate, len(p.Episodes))
+	for i, item := range feed.Channel.Items {
 		pubDate, err := parsePubDate(item.PubDate)
 		if err != nil {
-			log.Printf("Failed to parse pubdate '%s': %v\n", item.PubDate, err)
+			log.Printf(" - [%d of %d] failed to parse pubdate '%s': %v\n", i, totalEpisodesToUpdate, item.PubDate, err)
+			continue
 		}
 
 		ep := &store.Episode{
@@ -64,10 +68,9 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 
 		// If it's an existing episode, match by GUID.
 		found := false
-		log.Printf(" - (%d existing episodes)\n", len(p.Episodes))
 		for i, existing := range p.Episodes {
 			if existing.GUID == ep.GUID {
-				log.Printf(" - found an existing one (%v == %v).\n", existing.GUID, ep.GUID)
+				log.Printf(" - [%d of %d] existing episode, not updating (%v %s)\n", i, totalEpisodesToUpdate, ep.PubDate, ep.Title)
 				ep.ID = existing.ID
 				// Remove this element from the podcasts episodes, we'll re-add it later
 				p.Episodes = append(p.Episodes[:i], p.Episodes[i+1:]...)
@@ -78,6 +81,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) error {
 
 		// Note: we don't update existing episodes, there's not really much point.
 		if !found {
+			log.Printf(" - [%d of %d] new episode, updating (%v %s)\n", i, totalEpisodesToUpdate, ep.PubDate, ep.Title)
 			id, err := store.SaveEpisode(ctx, p, ep)
 			if err != nil {
 				return fmt.Errorf("error saving episode: %v", err)

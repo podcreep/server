@@ -34,12 +34,6 @@ that you can have consistent data between runs.
 `--project` should be set to an App Engine project ID (I use `podcreep` as that's the project ID of
 the main server).
 
-### Cloud Tasks emulator
-
-This one is a bit trickier, as there isn't an official one available. I've been using
-[this one](https://github.com/aertje/cloud-tasks-emulator) with reasonable success. This step is
-not 100% required, as you can do most things without the task queue.
-
 ### Environment variables and running
 
 Next, you have to set a bunch of environment variables so that the client libraries can connect to
@@ -49,11 +43,6 @@ the emulators. The variables for the data store emulator can be discovered by ru
 
 The `--data-dir` has to be the same as you specified when running the emulator (the emulator has
 to be running for this command to work).
-
-If you're using the Cloud Tasks emulator, you need to set an environment variable to let us know
-how to connect to it.
-
-    $ set CLOUDTASKS_HOST=localhost:8123
 
 Finally, run the server. But make sure the environment variable above are visible to it!
 

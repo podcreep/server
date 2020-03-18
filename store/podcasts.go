@@ -119,6 +119,32 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	return podcast, nil
 }
 
+// LoadEpisodes loads all episodes for the given podcast.
+func LoadEpisodes(ctx context.Context, podcastID int64) ([]*Episode, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var episodes []*Episode
+
+	key := datastore.IDKey("podcast", podcastID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).Order("-PubDate")
+	for t := ds.Run(ctx, q); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		ep.ID = key.ID
+		episodes = append(episodes, &ep)
+	}
+
+	return episodes, err
+}
+
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
