@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -11,6 +12,11 @@ import (
 	"github.com/podcreep/server/store"
 )
 
+// handleCronCheckUpdates is run every now and then to check for updates to our podcasts. We only
+// do one podcast per call to this method (otherwise we tend to run out of memory parsing all that
+// XML and stuff).
+// To decide which podcast to update, we look at how long it has been since the last update: we
+// pick the podcast with the oldest update, as long as it's been more than one hour.
 func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -21,26 +27,32 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Got %d podcasts.\n", len(podcasts))
-	for _, p := range podcasts {
-		updatePodcast(ctx, p)
+	if len(podcasts) == 0 {
+		log.Printf("No podcasts.")
+		return
 	}
+
+	// Sort the podcasts by LastFetchTime, so that the first podcast in the list is the one that
+	// we haven't fetched for the longer time.
+	sort.Slice(podcasts, func(i, j int) bool {
+		return podcasts[i].LastFetchTime.Before(podcasts[j].LastFetchTime)
+	})
+
+	p := podcasts[0]
+	if p.LastFetchTime.After(time.Now().Add(-1 * time.Hour)) {
+		log.Printf("Oldest podcast ('%s') was only updated at %v, not updating again.", p.Title, p.LastFetchTime)
+		return
+	}
+
+	log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
+	updatePodcast(ctx, p)
 }
 
 func updatePodcast(ctx context.Context, podcast *store.Podcast) {
-	// if the latest episode from this podcast is < 4 hours old, we won't try to re-fetch it.
-	// TODO: do it.
-	var newestEpisodeDate time.Time
-	for _, ep := range podcast.Episodes {
-		if ep.PubDate.After(newestEpisodeDate) {
-			newestEpisodeDate = ep.PubDate
-		}
-	}
-	log.Printf("Newest episode was last updated: %v", newestEpisodeDate)
-
-	// The podcast we get here will not have the episodes populates, as it comes from the list.
-	// So fetch the episodes manually (this will get all of the episodes we have stored)
-	episodes, err := store.LoadEpisodes(ctx, podcast.ID)
+	// The podcast we get here will not have the episodes populated, as it comes from the list.
+	// So fetch the episodes manually. We just get the latest 10 episodes. Anything older than this
+	// we will ignore entirely.
+	episodes, err := store.LoadEpisodes(ctx, podcast.ID, 10)
 	if err != nil {
 		log.Printf("Error fetching podcast: %v", err)
 		return

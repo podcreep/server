@@ -26,9 +26,8 @@ type Podcast struct {
 	// The URL of the podcast's RSS feed.
 	FeedURL string `datastore:",noindex" json:"feedUrl"`
 
-	// The time that this podcast was last fetched *and* we actually found a new episode. When
-	// fetching the RSS feed again, we'll tell the server to only give us new data if it has been
-	// changed since this time.
+	// The time that this podcast was last fetched When fetching the RSS feed again, we'll tell the
+	// server to only give us new data if it has been changed since this time.
 	LastFetchTime time.Time `datastore:",noindex" json:"lastFetchTime"`
 
 	// Subscribers is the list of account IDs that are subscribed to this podcast. Each entry is
@@ -119,8 +118,9 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	return podcast, nil
 }
 
-// LoadEpisodes loads all episodes for the given podcast.
-func LoadEpisodes(ctx context.Context, podcastID int64) ([]*Episode, error) {
+// LoadEpisodes loads all episodes for the given podcast, up to the given limit. If limit is < 0
+// then loads all episodes.
+func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
 		return nil, err
@@ -130,6 +130,9 @@ func LoadEpisodes(ctx context.Context, podcastID int64) ([]*Episode, error) {
 
 	key := datastore.IDKey("podcast", podcastID, nil)
 	q := datastore.NewQuery("episode").Ancestor(key).Order("-PubDate")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
 	for t := ds.Run(ctx, q); ; {
 		var ep Episode
 		key, err := t.Next(&ep)
