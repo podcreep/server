@@ -1,16 +1,35 @@
 {{define "style"}}
 <style>
+  div.podcast {
+    clear: both;
+    border: solid 1px black;
+    height: 100px;
+    cursor: pointer;
+  }
+
+  div.podcast img {
+    float: left;
+  }
+
+  div.podcast div {
+    margin: 10px 0 10px 110px;
+  }
 </style>
 {{end}}
 
 {{define "content"}}
 <h1>Podcasts</h1>
 
-{{range $index, $p := .Podcasts}}
-  <div>
-    <img src="{{$p.ImageURL}}" width="100" />
-    <div>{{$p.Title}}</div>
-  </div>
-{{end}}
+  {{range $index, $p := .Podcasts}}
+    <div class="podcast" onclick="showPodcast({{$p.ID}}); return false;">
+      <img src="{{$p.ImageURL}}" width="100" />
+      <div>{{$p.Title}}</div>
+    </div>
+  {{end}}
 
+  <script>
+    function showPodcast(id) {
+      location.href = "/admin/podcasts/" + id;
+    }
+  </script>
 {{end}}
