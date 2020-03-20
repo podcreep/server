@@ -61,5 +61,5 @@ func main() {
 	http.Handle("/", handler)
 
 	log.Printf("Server starting on :%s", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("0.0.0.0:%s", port), nil))
 }
