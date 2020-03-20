@@ -2,6 +2,8 @@ package cron
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -41,28 +43,31 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	p := podcasts[0]
 	if p.LastFetchTime.After(time.Now().Add(-1 * time.Hour)) {
 		log.Printf("Oldest podcast ('%s') was only updated at %v, not updating again.", p.Title, p.LastFetchTime)
+		io.WriteString(w, fmt.Sprintf("No podcasts to update. Oldest podcast, %s, was updated %v", p.Title, p.LastFetchTime))
 		return
 	}
 
 	log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
-	updatePodcast(ctx, p)
+	numUpdated, err := updatePodcast(ctx, p)
+	if err != nil {
+		io.WriteString(w, fmt.Sprintf("Error occurred: %v", err))
+	} else {
+		io.WriteString(w, fmt.Sprintf("Updated: %s (%d new episodes)", p.Title, numUpdated))
+	}
 }
 
-func updatePodcast(ctx context.Context, podcast *store.Podcast) {
+func updatePodcast(ctx context.Context, podcast *store.Podcast) (int, error) {
 	// The podcast we get here will not have the episodes populated, as it comes from the list.
 	// So fetch the episodes manually. We just get the latest 10 episodes. Anything older than this
 	// we will ignore entirely.
 	episodes, err := store.LoadEpisodes(ctx, podcast.ID, 10)
 	if err != nil {
 		log.Printf("Error fetching podcast: %v", err)
-		return
+		return 0, err
 	}
 	podcast.Episodes = episodes
 
-	err = rss.UpdatePodcast(ctx, podcast)
-	if err != nil {
-		log.Printf(" !! %v", err)
-	}
+	return rss.UpdatePodcast(ctx, podcast)
 }
 
 // Setup is called from server.go and sets up our routes, etc.
