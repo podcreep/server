@@ -47,7 +47,6 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) {
 
 	var sub *store.Subscription
 	for _, s := range subs {
-		log.Printf("Checking %d==%d &&\n", s.PodcastID, playbackState.PodcastID)
 		if s.PodcastID == playbackState.PodcastID {
 			sub = s
 			break
@@ -64,13 +63,9 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) {
 		if sub.Positions[i] == playbackState.EpisodeID {
 			sub.Positions[i+1] = int64(playbackState.Position)
 			found = true
-			log.Printf("Found existing position, updating ep %d to %d\n",
-				playbackState.EpisodeID, playbackState.Position)
 		}
 	}
 	if !found {
-		log.Printf("No existing position, making a new one ep %d to %d\n",
-			playbackState.EpisodeID, playbackState.Position)
 		sub.Positions = append(sub.Positions, playbackState.EpisodeID, int64(playbackState.Position))
 	}
 
