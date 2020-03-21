@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"cloud.google.com/go/datastore"
@@ -157,13 +158,41 @@ func ClearEpisodes(ctx context.Context, podcastID int64) error {
 		return err
 	}
 
-	key := datastore.IDKey("podcast", podcastID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).KeysOnly()
-	keys, err := ds.GetAll(ctx, q, nil)
-	if err != nil {
-		return err
+	for {
+		key := datastore.IDKey("podcast", podcastID, nil)
+		q := datastore.NewQuery("episode").Ancestor(key).KeysOnly()
+		count, err := ds.Count(ctx, q)
+		if err != nil {
+			log.Printf("%d total entities matching query.", count)
+		}
+
+		// Fetch in batches of 1000.
+		keys, err := ds.GetAll(ctx, q.Limit(1000), nil)
+		if err != nil {
+			return err
+		}
+		if len(keys) == 0 {
+			return nil
+		}
+		log.Printf("Got %d (of %d total) episodes to delete (first one: %s)", len(keys), count, keys[0])
+
+		if len(keys) < 100 {
+			err = ds.DeleteMulti(ctx, keys)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		// And delete in batches of 100.
+		for i := 0; i < len(keys); i += 100 {
+			err = ds.DeleteMulti(ctx, keys[i:i+100])
+			if err != nil {
+				return err
+			}
+			log.Printf("Deleted 100 episodes")
+		}
 	}
-	return ds.DeleteMulti(ctx, keys)
 }
 
 // LoadEpisodeGUIDs loads a map of GUID->ID for all the episodes of the given podcast.
