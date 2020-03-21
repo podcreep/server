@@ -3,8 +3,8 @@ runtime: go112
 nobuild_files: (admin|api|rss|store)
 
 env_variables:
-  DATASTORE_PROJECT_ID: podcreep
-  BASE_URL: https://podcreep.appspot.com/
+  DATASTORE_PROJECT_ID: pod-creep
+  BASE_URL: https://pod-creep.appspot.com/
 
 # All requests route to our script, we handle static files manually.
 handlers:
