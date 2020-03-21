@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -48,15 +49,65 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
-	numUpdated, err := updatePodcast(ctx, p)
+	numUpdated, err := updatePodcast(ctx, p, false)
 	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Error occurred: %v", err))
+		io.WriteString(w, fmt.Sprintf("Error updating podcast: %v", err))
 	} else {
 		io.WriteString(w, fmt.Sprintf("Updated: %s (%d new episodes)", p.Title, numUpdated))
 	}
 }
 
-func updatePodcast(ctx context.Context, podcast *store.Podcast) (int, error) {
+// handleCronForceUpdate does a "force" update on a podcast, including re-downloading and storing
+// all episodes. This is useful if we change our parsing or storing logic or something and we need
+// to refresh the whole thing.
+func handleCronForceUpdate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		log.Printf("Error parsing ID: %s\n", vars["id"])
+		io.WriteString(w, fmt.Sprintf("Error parsing ID: %s\n", vars["id"]))
+		return
+	}
+
+	p, err := store.GetPodcast(ctx, podcastID)
+	if err != nil {
+		log.Printf("Error fetching podcast: %v\n", err)
+		io.WriteString(w, fmt.Sprintf("Errorfetching podcast: %v\n", err))
+		return
+	}
+
+	numUpdated, err := updatePodcast(ctx, p, true)
+	if err != nil {
+		io.WriteString(w, fmt.Sprintf("Error updating podcast: %v", err))
+	} else {
+		io.WriteString(w, fmt.Sprintf("Updated: %s (%d episodes)", p.Title, numUpdated))
+	}
+}
+
+// handleClearEpisodes clears all of the episodes for a podcast. This is mostly just used for
+// debugging/testing.
+func handleClearEpisodes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		log.Printf("Error parsing ID: %s", vars["id"])
+		io.WriteString(w, fmt.Sprintf("Error parsing ID: %s", vars["id"]))
+		return
+	}
+
+	err = store.ClearEpisodes(ctx, podcastID)
+	if err != nil {
+		log.Printf("Error clearing episodes: %v", err)
+		io.WriteString(w, fmt.Sprintf("Error clearing episodes: %v", err))
+		return
+	}
+}
+
+func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int, error) {
 	// The podcast we get here will not have the episodes populated, as it comes from the list.
 	// So fetch the episodes manually. We just get the latest 10 episodes. Anything older than this
 	// we will ignore entirely.
@@ -67,12 +118,14 @@ func updatePodcast(ctx context.Context, podcast *store.Podcast) (int, error) {
 	}
 	podcast.Episodes = episodes
 
-	return rss.UpdatePodcast(ctx, podcast)
+	return rss.UpdatePodcast(ctx, podcast, force)
 }
 
 // Setup is called from server.go and sets up our routes, etc.
 func Setup(r *mux.Router) error {
 	r.HandleFunc("/cron/check-updates", handleCronCheckUpdates).Methods("GET")
+	r.HandleFunc("/cron/force-update/{id:[0-9]+}", handleCronForceUpdate).Methods("GET")
+	r.HandleFunc("/cron/clear-episodes/{id:[0-9]+}", handleClearEpisodes).Methods("GET")
 
 	return nil
 }

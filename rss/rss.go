@@ -17,11 +17,12 @@ type Media struct {
 
 // Item ...
 type Item struct {
-	Title       string `xml:"title"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-	GUID        string `xml:"guid"`
-	Media       Media  `xml:"enclosure"`
+	Title              string `xml:"title"`
+	Description        string `xml:"description"`
+	EncodedDescription string `xml:"http://purl.org/rss/1.0/modules/content/ encoded"`
+	PubDate            string `xml:"pubDate"`
+	GUID               string `xml:"guid"`
+	Media              Media  `xml:"enclosure"`
 }
 
 // AtomLink ...

@@ -7,10 +7,57 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/podcreep/server/store"
+
+	"github.com/microcosm-cc/bluemonday"
 )
+
+var (
+	// An empty policy will strip all HTML tags, which is what we actually want.
+	htmlPolicy = bluemonday.NewPolicy()
+)
+
+func updateEpisode(ctx context.Context, ep *store.Episode, item Item, p *store.Podcast) error {
+	pubDate, err := parsePubDate(item.PubDate)
+	if err != nil {
+		return fmt.Errorf("error parsing date: %v", err)
+	}
+
+	ep.GUID = item.GUID
+	ep.MediaURL = item.Media.URL
+	ep.Title = item.Title
+	ep.Description = item.Description
+	ep.DescriptionHTML = false
+	ep.ShortDescription = item.Description
+	ep.PubDate = pubDate
+
+	if item.EncodedDescription != "" {
+		ep.Description = item.EncodedDescription
+		ep.DescriptionHTML = true
+	} else {
+		ep.Description = htmlPolicy.Sanitize(ep.Description)
+	}
+	ep.ShortDescription = htmlPolicy.Sanitize(ep.ShortDescription)
+	if len(ep.ShortDescription) > 80 {
+		index := strings.Index(ep.ShortDescription[77:], " ")
+		ep.ShortDescription = ep.ShortDescription[0:77+index] + "..."
+	}
+
+	if ep.ID == 0 {
+		log.Printf(" - new episode [%v] '%s', updating", ep.PubDate, ep.Title)
+	} else {
+		log.Printf(" - updated episode %d [%v] '%s', updating", ep.ID, ep.PubDate, ep.Title)
+	}
+	_, err = store.SaveEpisode(ctx, p, ep)
+	if err != nil {
+		return fmt.Errorf("error saving episode: %v", err)
+	}
+
+	return nil
+}
 
 // maybeUpdateEpisode will update any new episode we're given.
 func maybeUpdateEpisode(ctx context.Context, item Item, p *store.Podcast) (bool, error) {
@@ -38,21 +85,16 @@ func maybeUpdateEpisode(ctx context.Context, item Item, p *store.Podcast) (bool,
 	}
 
 	// OK, seems to be new, add it.
+	ep := &store.Episode{}
+	return true, updateEpisode(ctx, ep, item, p)
+}
+
+// forceUpdateEpisode updates an episode even if it already exists in the data store.
+func forceUpdateEpisode(ctx context.Context, item Item, p *store.Podcast, guidMap map[string]int64) error {
 	ep := &store.Episode{
-		GUID:        item.GUID,
-		MediaURL:    item.Media.URL,
-		Title:       item.Title,
-		Description: item.Description,
-		PubDate:     pubDate,
+		ID: guidMap[item.GUID],
 	}
-
-	log.Printf(" - new episode [%v] '%s', updating", ep.PubDate, ep.Title)
-	_, err = store.SaveEpisode(ctx, p, ep)
-	if err != nil {
-		return false, fmt.Errorf("error saving episode: %v", err)
-	}
-
-	return true, nil
+	return updateEpisode(ctx, ep, item, p)
 }
 
 // UpdatePodcast fetches the feed URL for the given podcast, parses it and updates all of the
@@ -60,10 +102,18 @@ func maybeUpdateEpisode(ctx context.Context, item Item, p *store.Podcast) (bool,
 // the latest details.
 //
 // To keep memory usage managable, we use the xml.Decoder interface to decode the XML file in a
-// streaming fashion. We also assume the podcast only has the latest handful of episodes -- anything
-// older than the oldest episode we have already stored is ignore (if there's no existing episode
+// streaming fashion.
+//
+// If force is false, then we assume the podcast only has the latest handful of episodes -- anything
+// older than the oldest episode we have already stored is ignored (if there's no existing episode
 // then we assume this is a new podcast and load everything).
-func UpdatePodcast(ctx context.Context, p *store.Podcast) (int, error) {
+//
+// If force is true, then we ignore existing episodes and re-store all episodes in the RSS file.
+//
+// Because the website we're downloading from can some times time out before we finish processing
+// the file, if we're downloading all episodes (either force is true, or there's no existing
+// episodes), then we download all items first before processing them.
+func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, error) {
 	log.Printf("Updating podcast: [%d] %s", p.ID, p.Title)
 
 	// Fetch the RSS feed via a HTTP request.
@@ -73,7 +123,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) (int, error) {
 		return 0, err
 	}
 
-	if !p.LastFetchTime.IsZero() {
+	if !p.LastFetchTime.IsZero() && !force {
 		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
 	}
 
@@ -91,10 +141,16 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) (int, error) {
 		return 0, fmt.Errorf("error fetching URL: %s status=%d", p.FeedURL, resp.StatusCode)
 	}
 
+	// No episodes, so we do the same as if you'd specified force=true -- download everything
+	if len(p.Episodes) == 0 {
+		force = true
+	}
+
 	// Unmarshal the RSS feed, loading epsiodes as we go. We are extremely forgiving on the XML
 	// structure, basically skipping everything that's not an <item> element (where the episode
 	// details are stored).
 	var item Item
+	var items []Item
 	decoder := xml.NewDecoder(resp.Body)
 	numUpdated := 0
 	for {
@@ -119,15 +175,35 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast) (int, error) {
 					return 0, err
 				}
 
-				wasUpdated, err := maybeUpdateEpisode(ctx, item, p)
-				if err != nil {
-					log.Printf("Error updating item: %v", err)
-					return 0, err
-				}
-				if wasUpdated {
-					numUpdated++
+				if force {
+					items = append(items, item)
+				} else {
+					wasUpdated, err := maybeUpdateEpisode(ctx, item, p)
+					if err != nil {
+						log.Printf("Error updating item: %v", err)
+						return 0, err
+					}
+					if wasUpdated {
+						numUpdated++
+					}
 				}
 			}
+		}
+	}
+
+	if force {
+		guidMap, err := store.LoadEpisodeGUIDs(ctx, p.ID)
+		if err != nil {
+			return 0, err
+		}
+		log.Printf("%d entries in GUID map", len(guidMap))
+		for _, item := range items {
+			err := forceUpdateEpisode(ctx, item, p, guidMap)
+			if err != nil {
+				log.Printf("Error updating item: %v", err)
+				return 0, err
+			}
+			numUpdated++
 		}
 	}
 

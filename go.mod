@@ -12,6 +12,7 @@ require (
 	github.com/gorilla/schema v1.0.2
 	github.com/grpc-ecosystem/grpc-gateway v1.5.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/microcosm-cc/bluemonday v1.0.1
 	github.com/openzipkin/zipkin-go v0.1.1 // indirect
 	github.com/prometheus/client_golang v0.8.0 // indirect
 	github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e // indirect

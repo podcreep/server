@@ -47,10 +47,12 @@ type Episode struct {
 	ID   int64  `datastore:"-" json:"id"`
 	GUID string `json:"-"`
 
-	Title       string    `datastore:",noindex" json:"title"`
-	Description string    `datastore:",noindex" json:"description"`
-	PubDate     time.Time `json:"pubDate"`
-	MediaURL    string    `datastore:",noindex" json:"mediaUrl"`
+	Title            string    `datastore:",noindex" json:"title"`
+	Description      string    `datastore:",noindex" json:"description"`
+	DescriptionHTML  bool      `datastore:",noindex" json:"descriptionHtml"`
+	ShortDescription string    `datastore:",noindex" json:"shortDescription"`
+	PubDate          time.Time `json:"pubDate"`
+	MediaURL         string    `datastore:",noindex" json:"mediaUrl"`
 }
 
 // SavePodcast saves the given podcast to the store.
@@ -146,6 +148,48 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 	}
 
 	return episodes, err
+}
+
+// ClearEpisodes removes all episodes for the given podcast.
+func ClearEpisodes(ctx context.Context, podcastID int64) error {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return err
+	}
+
+	key := datastore.IDKey("podcast", podcastID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).KeysOnly()
+	keys, err := ds.GetAll(ctx, q, nil)
+	if err != nil {
+		return err
+	}
+	return ds.DeleteMulti(ctx, keys)
+}
+
+// LoadEpisodeGUIDs loads a map of GUID->ID for all the episodes of the given podcast.
+func LoadEpisodeGUIDs(ctx context.Context, podcastID int64) (map[string]int64, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]int64)
+
+	key := datastore.IDKey("podcast", podcastID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).Project("GUID")
+	for t := ds.Run(ctx, q); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		result[ep.GUID] = key.ID
+	}
+
+	return result, nil
 }
 
 // LoadPodcasts loads all podcasts from the data store.
