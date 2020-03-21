@@ -118,7 +118,14 @@ func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int
 	}
 	podcast.Episodes = episodes
 
-	return rss.UpdatePodcast(ctx, podcast, force)
+	// Actually do the update.
+	numUpdated, error := rss.UpdatePodcast(ctx, podcast, force)
+
+	// Update the last fetch time.
+	podcast.LastFetchTime = time.Now()
+	_, err = store.SavePodcast(ctx, podcast)
+
+	return numUpdated, error
 }
 
 // Setup is called from server.go and sets up our routes, etc.

@@ -207,8 +207,5 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 		}
 	}
 
-	// Update the last fetch time.
-	p.LastFetchTime = time.Now()
-	_, err = store.SavePodcast(ctx, p)
 	return numUpdated, err
 }
