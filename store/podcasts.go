@@ -8,6 +8,13 @@ import (
 
 	"cloud.google.com/go/datastore"
 	"google.golang.org/api/iterator"
+
+	"github.com/microcosm-cc/bluemonday"
+)
+
+var (
+	// The policy we use to sanitize the Description's HTML.
+	htmlDescriptionPolicy = bluemonday.UGCPolicy()
 )
 
 // Podcast is the parent entity for a podcast.
@@ -115,6 +122,10 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 			return nil, err
 		}
 		ep.ID = key.ID
+		if ep.DescriptionHTML {
+			// Sanitize the HTML before we send it to the client.
+			ep.Description = htmlDescriptionPolicy.Sanitize(ep.Description)
+		}
 		podcast.Episodes = append(podcast.Episodes, &ep)
 	}
 
