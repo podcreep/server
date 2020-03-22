@@ -30,10 +30,11 @@ type Subscription struct {
 	// PodcastID is the identified of the podcast that you're subscribed to.
 	PodcastID int64 `json:"podcastID"`
 
-	// OldestUnlistenedEpisodeID is the oldest episode ID that hasn't been listened to. This allows us
-	// to keep Positions short, by truncating it to only include episodes after this one. An episode
-	// can be explicitly in Positions even if it's older than this.
-	OldestUnlistenedEpisodeID int64 `json:"oldestUnlistenedEpisodeID"`
+	// DoneCutoffDate is the date after which we assume all episodes are "done". When you mark an
+	// episode done, if there's nothing else after that episode before this date, we'll simply adjust
+	// the cutoff date to include the new episode. That way, we can keep the episode position list
+	// relatively short.
+	DoneCutoffDate int64 `json:"doneCutoffDate"`
 
 	// Positions is an array of episodeID,offset integer. The first integer is the identifier of the
 	// episide that is being played. The second integer is the offset (in seconds) that playback is
@@ -41,10 +42,13 @@ type Subscription struct {
 	// played.
 	Positions []int64 `json:"-"`
 
-	// JSONPositions is a nicer encoding of Positions for JSON. The key is the episode ID (as a
+	// PositionsMap is a nicer encoding of Positions for JSON. The key is the episode ID (as a
 	// string, because that's what JSON requires), and the value is the offset in seconds that you're
 	// up to (again, negative for completely-played episodes).
-	JSONPositions map[string]int32 `datastore:"-" json:"positions"`
+	PositionsMap map[string]int32 `datastore:"-" json:"positions"`
+
+	// ignored, do not use.
+	Ignored int64 `datastore:"OldestUnlistenedEpisodeID"`
 }
 
 // SaveAccount saves an account to the data store.
@@ -112,10 +116,10 @@ func DeleteSubscription(ctx context.Context, acct *Account, subscriptionID int64
 }
 
 func populateSubscription(sub *Subscription) {
-	sub.JSONPositions = make(map[string]int32)
+	sub.PositionsMap = make(map[string]int32)
 	for i := 0; i < len(sub.Positions); i += 2 {
 		s := strconv.FormatInt(sub.Positions[i], 10)
-		sub.JSONPositions[s] = int32(sub.Positions[i+1])
+		sub.PositionsMap[s] = int32(sub.Positions[i+1])
 	}
 }
 

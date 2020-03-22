@@ -73,9 +73,15 @@ func handleCronForceUpdate(w http.ResponseWriter, r *http.Request) {
 
 	p, err := store.GetPodcast(ctx, podcastID)
 	if err != nil {
-		log.Printf("Error fetching podcast: %v\n", err)
-		io.WriteString(w, fmt.Sprintf("Errorfetching podcast: %v\n", err))
+		log.Printf("Error fetching podcast: %v", err)
+		io.WriteString(w, fmt.Sprintf("Error fetching podcast: %v", err))
 		return
+	}
+
+	p.Episodes, err = store.LoadEpisodes(ctx, p.ID, 20)
+	if err != nil {
+		log.Printf("Error fetching recent episodes: %v", err)
+		io.WriteString(w, fmt.Sprintf("Error fetching episodes: %v", err))
 	}
 
 	numUpdated, err := updatePodcast(ctx, p, true)

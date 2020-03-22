@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"cloud.google.com/go/datastore"
@@ -112,28 +113,33 @@ func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	}
 	podcast.ID = key.ID
 
-	q := datastore.NewQuery("episode").Ancestor(key).Order("-PubDate").Limit(20)
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
+	return podcast, nil
+}
+
+// GetEpisode gets the episode with the given ID for the given podcast.
+func GetEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, error) {
+	// First check if the episode is already there, GetPodcast will return a few recent episodes
+	// as well, so we might be able to skip the datastore.
+	for i := 0; i < len(p.Episodes); i++ {
+		if p.Episodes[i].ID == episodeID {
+			return p.Episodes[i], nil
 		}
-		ep.ID = key.ID
-		if ep.DescriptionHTML {
-			// Sanitize the HTML before we send it to the client.
-			ep.Description = htmlDescriptionPolicy.Sanitize(ep.Description)
-		}
-		podcast.Episodes = append(podcast.Episodes, &ep)
 	}
 
-	return podcast, nil
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	key := datastore.IDKey("episode", episodeID, datastore.IDKey("podcast", p.ID, nil))
+	ep := &Episode{}
+	err = ds.Get(ctx, key, ep)
+	return ep, err
 }
 
 // LoadEpisodes loads all episodes for the given podcast, up to the given limit. If limit is < 0
 // then loads all episodes.
+// TODO: rename this GetEpisodes
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
@@ -147,6 +153,66 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
+	for t := ds.Run(ctx, q); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		ep.ID = key.ID
+		episodes = append(episodes, &ep)
+	}
+
+	return episodes, err
+}
+
+// GetEpisodesForSubscription gets the episodes to display for the given subscription. We'll return
+// all episodes up to the subscription's done cutoff date, and then remove any episodes that have
+// been marked as done.
+func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscription) ([]*Episode, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var episodes []*Episode
+
+	cutOff := time.Unix(sub.DoneCutoffDate, 0)
+	key := datastore.IDKey("podcast", p.ID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >", cutOff).Order("-PubDate")
+	for t := ds.Run(ctx, q); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		ep.ID = key.ID
+
+		// Only add it if it's not marked done.
+		strID := strconv.FormatInt(ep.ID, 10)
+		if sub.PositionsMap[strID] >= 0 {
+			episodes = append(episodes, &ep)
+		}
+	}
+
+	return episodes, err
+}
+
+// GetEpisodesBetween gets all episodes between the two given dates.
+func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) ([]*Episode, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var episodes []*Episode
+
+	key := datastore.IDKey("podcast", p.ID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >=", start).Filter("PubDate <=", end).Order("-PubDate")
 	for t := ds.Run(ctx, q); ; {
 		var ep Episode
 		key, err := t.Next(&ep)
