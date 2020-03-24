@@ -266,6 +266,13 @@ func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		p.Episodes, err = store.GetEpisodesForSubscription(ctx, p, &sub.Subscription)
+		if err != nil {
+			log.Printf("Error fetching episodes: %v\n", err)
+			http.Error(w, "Error fetching episodes.", http.StatusInternalServerError)
+			return
+		}
+
 		// TODO: don't return episodes they've already got
 		subscriptionDetails[i].Podcast = p
 	}
