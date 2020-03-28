@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -66,13 +65,8 @@ type Episode struct {
 
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return 0, err
-	}
-
 	key := datastore.IDKey("podcast", p.ID, nil)
-	key, err = ds.Put(ctx, key, p)
+	key, err := ds.Put(ctx, key, p)
 	if err != nil {
 		return 0, err
 	}
@@ -82,14 +76,9 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 
 // SaveEpisode saves the given episode to the data store.
 func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return 0, err
-	}
-
 	pkey := datastore.IDKey("podcast", p.ID, nil)
 	key := datastore.IDKey("episode", ep.ID, pkey)
-	key, err = ds.Put(ctx, key, ep)
+	key, err := ds.Put(ctx, key, ep)
 	if err != nil {
 		return 0, err
 	}
@@ -100,14 +89,9 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
 func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	key := datastore.IDKey("podcast", podcastID, nil)
 
-	err = ds.Get(ctx, key, podcast)
+	err := ds.Get(ctx, key, podcast)
 	if err != nil {
 		return nil, err
 	}
@@ -126,14 +110,9 @@ func GetEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, err
 		}
 	}
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	key := datastore.IDKey("episode", episodeID, datastore.IDKey("podcast", p.ID, nil))
 	ep := &Episode{}
-	err = ds.Get(ctx, key, ep)
+	err := ds.Get(ctx, key, ep)
 	return ep, err
 }
 
@@ -141,11 +120,6 @@ func GetEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, err
 // then loads all episodes.
 // TODO: rename this GetEpisodes
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	var episodes []*Episode
 
 	key := datastore.IDKey("podcast", podcastID, nil)
@@ -165,18 +139,13 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 		episodes = append(episodes, &ep)
 	}
 
-	return episodes, err
+	return episodes, nil
 }
 
 // GetEpisodesForSubscription gets the episodes to display for the given subscription. We'll return
 // all episodes up to the subscription's done cutoff date, and then remove any episodes that have
 // been marked as done.
 func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscription) ([]*Episode, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	var episodes []*Episode
 
 	cutOff := time.Unix(sub.DoneCutoffDate, 0)
@@ -199,7 +168,7 @@ func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscripti
 		}
 	}
 
-	return episodes, err
+	return episodes, nil
 }
 
 // GetEpisodesNewAndInProgressForSubscription gets the new and in-progress episodes for the given
@@ -207,11 +176,6 @@ func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscripti
 // the 10 most recent ones). And of course, in-progress ones are ones that have progress but are
 // not yet marked done.
 func GetEpisodesNewAndInProgressForSubscription(ctx context.Context, p *Podcast, sub *Subscription) (newEpisodes []*Episode, inProgress []*Episode, err error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, nil, err
-	}
-
 	cutOff := time.Unix(sub.DoneCutoffDate, 0)
 	key := datastore.IDKey("podcast", p.ID, nil)
 	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >", cutOff).Order("-PubDate").Limit(10)
@@ -238,11 +202,6 @@ func GetEpisodesNewAndInProgressForSubscription(ctx context.Context, p *Podcast,
 
 // GetEpisodesBetween gets all episodes between the two given dates.
 func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) ([]*Episode, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	var episodes []*Episode
 
 	key := datastore.IDKey("podcast", p.ID, nil)
@@ -259,16 +218,11 @@ func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) (
 		episodes = append(episodes, &ep)
 	}
 
-	return episodes, err
+	return episodes, nil
 }
 
 // ClearEpisodes removes all episodes for the given podcast.
 func ClearEpisodes(ctx context.Context, podcastID int64) error {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return err
-	}
-
 	for {
 		// Fetch in batches of 1000
 		key := datastore.IDKey("podcast", podcastID, nil)
@@ -303,11 +257,6 @@ func ClearEpisodes(ctx context.Context, podcastID int64) error {
 
 // LoadEpisodeGUIDs loads a map of GUID->ID for all the episodes of the given podcast.
 func LoadEpisodeGUIDs(ctx context.Context, podcastID int64) (map[string]int64, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	result := make(map[string]int64)
 
 	key := datastore.IDKey("podcast", podcastID, nil)
@@ -330,11 +279,6 @@ func LoadEpisodeGUIDs(ctx context.Context, podcastID int64) (map[string]int64, e
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("Error creating datastore client: %v", err)
-	}
-
 	q := datastore.NewQuery("podcast")
 	var podcasts []*Podcast
 	for t := ds.Run(ctx, q); ; {

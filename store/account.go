@@ -63,11 +63,6 @@ func SaveAccount(ctx context.Context, username, password string) (*Account, erro
 		return nil, fmt.Errorf("error creating cookie: %v", err)
 	}
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	acct := &Account{
 		Cookie:       cookie,
 		Username:     username,
@@ -88,12 +83,7 @@ func SaveSubscription(ctx context.Context, acct *Account, sub *Subscription) (*S
 	acctKey := datastore.IDKey("account", acct.ID, nil)
 	key := datastore.IDKey("subscription", sub.ID, acctKey)
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
-	key, err = ds.Put(ctx, key, sub)
+	key, err := ds.Put(ctx, key, sub)
 	if err != nil {
 		return nil, fmt.Errorf("error storing subscription: %v", err)
 	}
@@ -105,12 +95,6 @@ func SaveSubscription(ctx context.Context, acct *Account, sub *Subscription) (*S
 // DeleteSubscription deletes a subscription for the given podcast.
 func DeleteSubscription(ctx context.Context, acct *Account, subscriptionID int64) error {
 	acctKey := datastore.IDKey("account", acct.ID, nil)
-
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return err
-	}
-
 	key := datastore.IDKey("subscription", subscriptionID, acctKey)
 	return ds.Delete(ctx, key)
 }
@@ -126,11 +110,6 @@ func populateSubscription(sub *Subscription) {
 // GetSubscriptions return all of the subscriptions owned by the given account.
 func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
 	var subscriptions []*Subscription
-
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
 
 	acctKey := datastore.IDKey("account", acct.ID, nil)
 	q := datastore.NewQuery("subscription").Ancestor(acctKey)
@@ -158,13 +137,8 @@ func GetSubscription(ctx context.Context, acct *Account, subID int64) (*Subscrip
 	acctKey := datastore.IDKey("account", acct.ID, nil)
 	subKey := datastore.IDKey("subscription", subID, acctKey)
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	sub := new(Subscription)
-	err = ds.Get(ctx, subKey, sub)
+	err := ds.Get(ctx, subKey, sub)
 	if err != nil {
 		return nil, fmt.Errorf("error loading subscription: %v", err)
 	}
@@ -177,11 +151,6 @@ func GetSubscription(ctx context.Context, acct *Account, subID int64) (*Subscrip
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil
 // if no account with that username exists.
 func LoadAccountByUsername(ctx context.Context, username, password string) (*Account, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	q := datastore.NewQuery("account").
 		Filter("Username =", username).
 		Limit(1)
@@ -210,11 +179,6 @@ func LoadAccountByUsername(ctx context.Context, username, password string) (*Acc
 // LoadAccountByCookie loads the Account for the user with the given cookie. Returns an error
 // if no account with that cookie exists.
 func LoadAccountByCookie(ctx context.Context, cookie string) (*Account, error) {
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-
 	q := datastore.NewQuery("account").
 		Filter("Cookie =", cookie).
 		Limit(1)
