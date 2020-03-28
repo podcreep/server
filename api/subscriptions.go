@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"cloud.google.com/go/datastore"
@@ -22,8 +23,22 @@ type subscriptionDetails struct {
 	Podcast *store.Podcast `json:"podcast"`
 }
 
+type episodeDetails struct {
+	store.Episode
+
+	// PodcastID because we don't normally store this with the episode in the store.
+	PodcastID int64 `json:"podcastID"`
+
+	// Position is the progress you've made into this episode.
+	Position int32 `json:"position"`
+}
+
+// This is returned to the client when it requests the users subscriptions.
 type subscriptionDetailsList struct {
 	Subscriptions []subscriptionDetails `json:"subscriptions"`
+
+	NewEpisodes []episodeDetails `json:"newEpisodes"`
+	InProgress  []episodeDetails `json:"inProgress"`
 }
 
 type subscriptionsSyncPostRequest struct {
@@ -73,6 +88,7 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the subscriptions for this user.
 	subscriptionDetails, err := getSubscriptions(ctx, acct)
 	if err != nil {
 		log.Printf("Error getting subscriptions: %v\n", err)
@@ -80,8 +96,32 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the new episodes for this user. We'll grab the first 10 episodes for each podcast
+	// they're subscribed to, then intermix them all together.
+	var newEpisodes []episodeDetails
+	for _, s := range subscriptionDetails {
+		episodes, err := store.GetEpisodesNewForSubscription(ctx, s.Podcast, &s.Subscription)
+		if err != nil {
+			log.Printf("Error getting episodes: %v\n", err)
+			http.Error(w, "Unexpected error.", http.StatusInternalServerError)
+			return
+		}
+
+		for _, ep := range episodes {
+			newEpisodes = append(newEpisodes, episodeDetails{
+				Episode:   *ep,
+				PodcastID: s.PodcastID,
+				Position:  0,
+			})
+		}
+	}
+	sort.Slice(newEpisodes, func(i, j int) bool {
+		return newEpisodes[i].PubDate.After(newEpisodes[j].PubDate)
+	})
+
 	err = json.NewEncoder(w).Encode(&subscriptionDetailsList{
 		Subscriptions: subscriptionDetails,
+		NewEpisodes:   newEpisodes,
 	})
 	if err != nil {
 		log.Printf("Error encoding subscriptions: %v\n", err)

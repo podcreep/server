@@ -202,6 +202,39 @@ func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscripti
 	return episodes, err
 }
 
+// GetEpisodesNewForSubscription gets the new episodes for the given subscription. In this case,
+// new episodes are ones that don't have any progress at all (and only the 10 most recent ones)
+func GetEpisodesNewForSubscription(ctx context.Context, p *Podcast, sub *Subscription) ([]*Episode, error) {
+	ds, err := datastore.NewClient(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var episodes []*Episode
+
+	cutOff := time.Unix(sub.DoneCutoffDate, 0)
+	key := datastore.IDKey("podcast", p.ID, nil)
+	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >", cutOff).Order("-PubDate").Limit(10)
+	for t := ds.Run(ctx, q); ; {
+		var ep Episode
+		key, err := t.Next(&ep)
+		if err == iterator.Done {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		ep.ID = key.ID
+
+		// Only add it if it's not marked done, and in fact has no progress at all.
+		strID := strconv.FormatInt(ep.ID, 10)
+		if sub.PositionsMap[strID] == 0 {
+			episodes = append(episodes, &ep)
+		}
+	}
+
+	return episodes, err
+}
+
 // GetEpisodesBetween gets all episodes between the two given dates.
 func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) ([]*Episode, error) {
 	ds, err := datastore.NewClient(ctx, "")
