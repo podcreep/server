@@ -99,19 +99,28 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 	// Get the new episodes for this user. We'll grab the first 10 episodes for each podcast
 	// they're subscribed to, then intermix them all together.
 	var newEpisodes []episodeDetails
+	var inProgress []episodeDetails
 	for _, s := range subscriptionDetails {
-		episodes, err := store.GetEpisodesNewForSubscription(ctx, s.Podcast, &s.Subscription)
+		ne, ip, err := store.GetEpisodesNewAndInProgressForSubscription(ctx, s.Podcast, &s.Subscription)
 		if err != nil {
 			log.Printf("Error getting episodes: %v\n", err)
 			http.Error(w, "Unexpected error.", http.StatusInternalServerError)
 			return
 		}
 
-		for _, ep := range episodes {
+		for _, ep := range ne {
 			newEpisodes = append(newEpisodes, episodeDetails{
 				Episode:   *ep,
 				PodcastID: s.PodcastID,
 				Position:  0,
+			})
+		}
+		for _, ep := range ip {
+			strID := strconv.FormatInt(ep.ID, 10)
+			inProgress = append(inProgress, episodeDetails{
+				Episode:   *ep,
+				PodcastID: s.PodcastID,
+				Position:  s.PositionsMap[strID],
 			})
 		}
 	}
@@ -122,6 +131,7 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(&subscriptionDetailsList{
 		Subscriptions: subscriptionDetails,
 		NewEpisodes:   newEpisodes,
+		InProgress:    inProgress,
 	})
 	if err != nil {
 		log.Printf("Error encoding subscriptions: %v\n", err)

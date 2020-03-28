@@ -202,15 +202,15 @@ func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscripti
 	return episodes, err
 }
 
-// GetEpisodesNewForSubscription gets the new episodes for the given subscription. In this case,
-// new episodes are ones that don't have any progress at all (and only the 10 most recent ones)
-func GetEpisodesNewForSubscription(ctx context.Context, p *Podcast, sub *Subscription) ([]*Episode, error) {
+// GetEpisodesNewAndInProgressForSubscription gets the new and in-progress episodes for the given
+// subscription. In this case, new episodes are ones that don't have any progress at all (and only
+// the 10 most recent ones). And of course, in-progress ones are ones that have progress but are
+// not yet marked done.
+func GetEpisodesNewAndInProgressForSubscription(ctx context.Context, p *Podcast, sub *Subscription) (newEpisodes []*Episode, inProgress []*Episode, err error) {
 	ds, err := datastore.NewClient(ctx, "")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	var episodes []*Episode
 
 	cutOff := time.Unix(sub.DoneCutoffDate, 0)
 	key := datastore.IDKey("podcast", p.ID, nil)
@@ -221,18 +221,19 @@ func GetEpisodesNewForSubscription(ctx context.Context, p *Podcast, sub *Subscri
 		if err == iterator.Done {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ep.ID = key.ID
 
-		// Only add it if it's not marked done, and in fact has no progress at all.
 		strID := strconv.FormatInt(ep.ID, 10)
 		if sub.PositionsMap[strID] == 0 {
-			episodes = append(episodes, &ep)
+			newEpisodes = append(newEpisodes, &ep)
+		} else if sub.PositionsMap[strID] > 0 {
+			inProgress = append(inProgress, &ep)
 		}
 	}
 
-	return episodes, err
+	return newEpisodes, inProgress, err
 }
 
 // GetEpisodesBetween gets all episodes between the two given dates.
