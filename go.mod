@@ -1,5 +1,7 @@
 module github.com/podcreep/server
 
+go 1.14
+
 require (
 	cloud.google.com/go v0.54.0
 	cloud.google.com/go/datastore v1.1.0

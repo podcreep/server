@@ -11,7 +11,7 @@ set DATASTORE_DATASET=podcreep
 set DATASTORE_EMULATOR_HOST=localhost:12783
 set DATASTORE_EMULATOR_HOST_PATH=localhost:12783/datastore
 set DATASTORE_HOST=http://localhost:12783
-set DATASTORE_PROJECT_ID=podcreep
+set DATASTORE_PROJECT_ID=pod-creep
 
 rem Let the server know it's running in debug mode.
 set DEBUG=1
