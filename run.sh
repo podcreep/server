@@ -7,17 +7,17 @@ adb reverse tcp:8080 tcp:8080
 
 # Datastore properties that the client library uses to connect to the local datastore emulator.
 # Make sure you set up the emulator to run on the port listed below.
-set DATASTORE_DATASET=podcreep
-set DATASTORE_EMULATOR_HOST=localhost:12783
-set DATASTORE_EMULATOR_HOST_PATH=localhost:12783/datastore
-set DATASTORE_HOST=http://localhost:12783
-set DATASTORE_PROJECT_ID=pod-creep
+export DATASTORE_DATASET=podcreep
+export DATASTORE_EMULATOR_HOST=localhost:12783
+export DATASTORE_EMULATOR_HOST_PATH=localhost:12783/datastore
+export DATASTORE_HOST=http://localhost:12783
+export DATASTORE_PROJECT_ID=podcreep
 
 # Let the server know it's running in debug mode.
-set DEBUG=1
+export DEBUG=1
 
 # Put your App engine service credential in this file so we can authenticate with Google's APIs
 # (used for admin login only at the moment).
-set GOOGLE_APPLICATION_CREDENTIALS=/Users/deanh/src/podcreep/service-credentials.json
+export GOOGLE_APPLICATION_CREDENTIALS=$HOME/src/podcreep/service-credentials.json
 
 go run main.go
