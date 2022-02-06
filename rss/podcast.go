@@ -123,7 +123,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 		return 0, err
 	}
 
-	if !p.LastFetchTime.IsZero() && !force {
+	if !p.LastFetchTime.IsZero() && !force && len(p.Episodes) > 0 {
 		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
 	}
 
