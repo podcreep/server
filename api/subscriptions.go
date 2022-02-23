@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strconv"
 
-	"cloud.google.com/go/datastore"
-
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/store"
 )
@@ -170,13 +168,7 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		log.Printf("Error creating datastore client: %v\n", err)
-		http.Error(w, "Error creating datastore client", http.StatusInternalServerError)
-		return
-	}
-	_, err = ds.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+	err = store.RunInTransaction(ctx, func(t *store.Transaction) error {
 		p, err := store.GetPodcast(ctx, podcastID)
 		if err != nil {
 			return fmt.Errorf("error loading podcast: %v", err)
@@ -240,13 +232,7 @@ func handleSubscriptionsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ds, err := datastore.NewClient(ctx, "")
-	if err != nil {
-		log.Printf("Error creating datastore client: %v\n", err)
-		http.Error(w, "Error creating datastore client", http.StatusInternalServerError)
-		return
-	}
-	_, err = ds.RunInTransaction(ctx, func(tx *datastore.Transaction) error {
+	err = store.RunInTransaction(ctx, func(t *store.Transaction) error {
 		p, err := store.GetPodcast(ctx, podcastID)
 		if err != nil {
 			return fmt.Errorf("error loading podcast: %v", err)
