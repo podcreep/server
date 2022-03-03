@@ -2,13 +2,10 @@ package store
 
 import (
 	"context"
-	"log"
-	"strconv"
+	"fmt"
 	"time"
 
-	"cloud.google.com/go/datastore"
-	"google.golang.org/api/iterator"
-
+	"github.com/jackc/pgx/v4"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -20,277 +17,317 @@ var (
 // Podcast is the parent entity for a podcast.
 type Podcast struct {
 	// A unique ID for this podcast.
-	ID int64 `datastore:"-" json:"id"`
+	ID int64 `json:"id"`
 
 	// The title of the podcast.
 	Title string `json:"title"`
 
 	// The description of the podcast.
-	Description string `datastore:",noindex" json:"description"`
+	Description string `json:"description"`
 
 	// The URL of the title image for the podcast.
-	ImageURL string `datastore:",noindex" json:"imageUrl"`
+	ImageURL string `json:"imageUrl"`
 
 	// The URL of the podcast's RSS feed.
-	FeedURL string `datastore:",noindex" json:"feedUrl"`
+	FeedURL string `json:"feedUrl"`
 
 	// The time that this podcast was last fetched When fetching the RSS feed again, we'll tell the
 	// server to only give us new data if it has been changed since this time.
-	LastFetchTime time.Time `datastore:",noindex" json:"lastFetchTime"`
-
-	// Subscribers is the list of account IDs that are subscribed to this podcast. Each entry is
-	// actually two numbers, the first is the account ID and the second is the subscription ID. This
-	// is just because we can't easily do maps in the data store.
-	Subscribers []int64 `json:"-"`
+	LastFetchTime time.Time `json:"lastFetchTime"`
 
 	// Episodes is the list of episodes that belong to this podcast.
-	Episodes []*Episode `datastore:"-" json:"episodes"`
-
-	// If non-nil, this is the subscription that the current user has to this podcast.
-	Subscription *Subscription `datastore:"-" json:"subscription"`
+	Episodes []*Episode `json:"episodes"`
 }
 
 // Episode is a single episode in a podcast.
 type Episode struct {
-	ID   int64  `datastore:"-" json:"id"`
-	GUID string `json:"-"`
-
-	Title            string    `datastore:",noindex" json:"title"`
-	Description      string    `datastore:",noindex" json:"description"`
-	DescriptionHTML  bool      `datastore:",noindex" json:"descriptionHtml"`
-	ShortDescription string    `datastore:",noindex" json:"shortDescription"`
+	ID               int64     `json:"id"`
+	PodcastID        int64     `json:"podcastID"`
+	GUID             string    `json:"-"`
+	Title            string    `json:"title"`
+	Description      string    `json:"description"`
+	DescriptionHTML  bool      `json:"descriptionHtml"`
+	ShortDescription string    `json:"shortDescription"`
 	PubDate          time.Time `json:"pubDate"`
-	MediaURL         string    `datastore:",noindex" json:"mediaUrl"`
+	MediaURL         string    `json:"mediaUrl"`
+}
+
+// InProgressEpisode is an Episode that contains addition "progress", for episodes that you are
+// currently partially-through.
+type InProgressEpisode struct {
+	Episode
+
+	// Position is the offset, in seconds, that the user is at for the episode.
+	Position int32
+}
+
+// EpisodeProgress is the state of a single episode of a podcast for a given account.
+type EpisodeProgress struct {
+	// PodcastID is the ID of the podcast this episode belongs to.
+	AccountID int64
+
+	// EpisodeID is the ID of the episode.
+	EpisodeID int64
+
+	// Position is the position, in seconds, that playback is up to. Negative means you've completely
+	// finished the episode and we mark it "done".
+	PositionSecs int32
+
+	// EpisodeComplete is true when the user has marked this episode complete.
+	EpisodeComplete bool
 }
 
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
-	key := datastore.IDKey("podcast", p.ID, nil)
-	key, err := ds.Put(ctx, key, p)
-	if err != nil {
-		return 0, err
-	}
-
-	return key.ID, nil
+	sql := "INSERT INTO podcasts (title, description, image_url, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+	row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, time.Time{})
+	err := row.Scan(&p.ID)
+	return p.ID, err
 }
 
 // SaveEpisode saves the given episode to the data store.
-func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) (int64, error) {
-	pkey := datastore.IDKey("podcast", p.ID, nil)
-	key := datastore.IDKey("episode", ep.ID, pkey)
-	key, err := ds.Put(ctx, key, ep)
-	if err != nil {
-		return 0, err
+func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
+	var sql = `INSERT INTO episodes
+		       (guid, podcast_id, title, description, description_html, short_description, pub_date, media_url)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+					 ON CONFLICT (podcast_id, guid) DO UPDATE SET
+					   title=$3, description=$4, description_html=$5, short_description=$6, pub_date=$7, media_url=$8
+					 RETURNING id`
+	row := conn.QueryRow(ctx, sql, ep.GUID, p.ID, ep.Title, ep.Description, ep.DescriptionHTML, ep.ShortDescription, ep.PubDate, ep.MediaURL)
+	var id int64
+	if err := row.Scan(&id); err != nil {
+		return err
 	}
-	return key.ID, nil
+
+	if ep.ID != 0 && ep.ID != id {
+		// TODO: delete the episode, something has gone wrong
+		return fmt.Errorf("Found existing episode with same GUID but different ID")
+	}
+
+	return nil
 }
 
 // GetPodcast returns the podcast with the given ID.
 func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
-
-	key := datastore.IDKey("podcast", podcastID, nil)
-
-	err := ds.Get(ctx, key, podcast)
-	if err != nil {
-		return nil, err
+	sql := "SELECT id, title, description, image_url, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
+	row := conn.QueryRow(ctx, sql, podcastID)
+	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+		return nil, fmt.Errorf("Error scanning row: %w", err)
 	}
-	podcast.ID = key.ID
-
 	return podcast, nil
 }
 
 // GetEpisode gets the episode with the given ID for the given podcast.
 func GetEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, error) {
-	// First check if the episode is already there, GetPodcast will return a few recent episodes
-	// as well, so we might be able to skip the datastore.
-	for i := 0; i < len(p.Episodes); i++ {
-		if p.Episodes[i].ID == episodeID {
-			return p.Episodes[i], nil
-		}
+	sql := `SELECT
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+		FROM episodes
+		WHERE id = $1`
+	row := conn.QueryRow(ctx, sql, episodeID)
+	var ep Episode
+	if err := row.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL); err != nil {
+		return nil, fmt.Errorf("Error scanning row: %w", err)
 	}
 
-	key := datastore.IDKey("episode", episodeID, datastore.IDKey("podcast", p.ID, nil))
-	ep := &Episode{}
-	err := ds.Get(ctx, key, ep)
-	return ep, err
+	return &ep, nil
+}
+
+func populateEpisode(currRow pgx.Rows) (*Episode, error) {
+	var ep Episode
+	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL)
+	return &ep, err
+}
+
+func populateInProgressEpisode(currRow pgx.Rows) (*InProgressEpisode, error) {
+	var ep InProgressEpisode
+	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position)
+	return &ep, err
+}
+
+func populateEpisodes(rows pgx.Rows) ([]*Episode, error) {
+	var episodes []*Episode
+	for rows.Next() {
+		ep, err := populateEpisode(rows)
+		if err != nil {
+			return nil, fmt.Errorf("Error scanning row: %w", err)
+		}
+
+		episodes = append(episodes, ep)
+	}
+
+	return episodes, nil
 }
 
 // LoadEpisodes loads all episodes for the given podcast, up to the given limit. If limit is < 0
 // then loads all episodes.
 // TODO: rename this GetEpisodes
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
-	var episodes []*Episode
-
-	key := datastore.IDKey("podcast", podcastID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).Order("-PubDate")
+	sql := `SELECT
+	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+		FROM episodes
+		WHERE podcast_id = $1
+		ORDER BY pub_date DESC`
 	if limit > 0 {
-		q = q.Limit(limit)
+		sql += " LIMIT $2"
 	}
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		ep.ID = key.ID
-		episodes = append(episodes, &ep)
+	rows, err := conn.Query(ctx, sql, podcastID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("Error querying rows: %w", err)
 	}
+	defer rows.Close()
 
-	return episodes, nil
+	return populateEpisodes(rows)
 }
 
-// GetEpisodesForSubscription gets the episodes to display for the given subscription. We'll return
-// all episodes up to the subscription's done cutoff date, and then remove any episodes that have
-// been marked as done.
-func GetEpisodesForSubscription(ctx context.Context, p *Podcast, sub *Subscription) ([]*Episode, error) {
+// GetEpisodesForSubscription gets the episodes to display for the given subscribed account. We'll
+// return all episodes that the account has not finished listening to.
+func GetEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
+
+	// TODO: check episode_progress
+
+	sql := `SELECT
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+		FROM episodes
+		WHERE podcast_id = $1
+		ORDER BY pub_date DESC`
+	rows, err := conn.Query(ctx, sql, p.ID)
+	if err != nil {
+		return nil, fmt.Errorf("Error querying rows: %w", err)
+	}
+	defer rows.Close()
+
+	return populateEpisodes(rows)
+}
+
+// GetEpisodesNewAndInProgress gets the new and in-progress episodes for the given account. In this
+// case, new episodes are ones that don't have any progress at all (and only from the last numDays
+// days). And of course, in-progress ones are ones that have progress but are not yet
+// marked done. For in-progress episode, we don't just limit them to the last numDays days, we will
+// return them all.
+func GetEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*InProgressEpisode, err error) {
+	sql := `
+		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
+		       pub_date, media_url, (CASE WHEN position_secs IS NULL THEN 0 ELSE position_secs END)
+		FROM episodes e
+		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
+		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
+		WHERE (pub_date > $1 OR ep.position_secs IS NOT NULL)
+		  AND s.account_id = $2
+		ORDER BY pub_date DESC`
+	rows, err := conn.Query(ctx, sql, time.Now().Add(-time.Hour*24*time.Duration(numDays)), acct.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Error querying rows: %w", err)
+	}
+	defer rows.Close()
+
 	var episodes []*Episode
-
-	cutOff := time.Unix(sub.DoneCutoffDate, 0)
-	key := datastore.IDKey("podcast", p.ID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >", cutOff).Order("-PubDate")
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
+	for rows.Next() {
+		ep, err := populateInProgressEpisode(rows)
+		if err != nil {
+			return nil, nil, fmt.Errorf("Error scanning row: %w", err)
 		}
-		ep.ID = key.ID
 
-		// Only add it if it's not marked done.
-		strID := strconv.FormatInt(ep.ID, 10)
-		if sub.PositionsMap[strID] >= 0 {
-			episodes = append(episodes, &ep)
+		if ep.Position == 0 {
+			episodes = append(episodes, &ep.Episode)
+		} else {
+			inProgress = append(inProgress, ep)
 		}
 	}
 
-	return episodes, nil
-}
-
-// GetEpisodesNewAndInProgressForSubscription gets the new and in-progress episodes for the given
-// subscription. In this case, new episodes are ones that don't have any progress at all (and only
-// the 10 most recent ones). And of course, in-progress ones are ones that have progress but are
-// not yet marked done.
-func GetEpisodesNewAndInProgressForSubscription(ctx context.Context, p *Podcast, sub *Subscription) (newEpisodes []*Episode, inProgress []*Episode, err error) {
-	cutOff := time.Unix(sub.DoneCutoffDate, 0)
-	key := datastore.IDKey("podcast", p.ID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >", cutOff).Order("-PubDate").Limit(10)
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, nil, err
-		}
-		ep.ID = key.ID
-
-		strID := strconv.FormatInt(ep.ID, 10)
-		if sub.PositionsMap[strID] == 0 {
-			newEpisodes = append(newEpisodes, &ep)
-		} else if sub.PositionsMap[strID] > 0 {
-			inProgress = append(inProgress, &ep)
-		}
-	}
-
-	return newEpisodes, inProgress, err
+	return episodes, inProgress, nil
 }
 
 // GetEpisodesBetween gets all episodes between the two given dates.
 func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) ([]*Episode, error) {
 	var episodes []*Episode
 
-	key := datastore.IDKey("podcast", p.ID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >=", start).Filter("PubDate <=", end).Order("-PubDate")
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		ep.ID = key.ID
-		episodes = append(episodes, &ep)
-	}
+	//key := datastore.IDKey("podcast", p.ID, nil)
+	//q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >=", start).Filter("PubDate <=", end).Order("-PubDate")
+	//for t := ds.Run(ctx, q); ; {
+	//	var ep Episode
+	//	key, err := t.Next(&ep)
+	//	if err == iterator.Done {
+	//		break
+	//	} else if err != nil {
+	//		return nil, err
+	//	}
+	//	ep.ID = key.ID
+	//	episodes = append(episodes, &ep)
+	//}
 
 	return episodes, nil
 }
 
 // ClearEpisodes removes all episodes for the given podcast.
 func ClearEpisodes(ctx context.Context, podcastID int64) error {
-	for {
-		// Fetch in batches of 1000
-		key := datastore.IDKey("podcast", podcastID, nil)
-		q := datastore.NewQuery("episode").Ancestor(key).KeysOnly().Limit(1000)
-		keys, err := ds.GetAll(ctx, q, nil)
-		if err != nil {
-			return err
-		}
-		if len(keys) == 0 {
-			return nil
-		}
-		log.Printf("Got %d episodes to delete (first one: %s)", len(keys), keys[0])
+	//for {
+	//	// Fetch in batches of 1000
+	//	key := datastore.IDKey("podcast", podcastID, nil)
+	//	q := datastore.NewQuery("episode").Ancestor(key).KeysOnly().Limit(1000)
+	//	keys, err := ds.GetAll(ctx, q, nil)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	if len(keys) == 0 {
+	//		return nil
+	//	}
+	//	log.Printf("Got %d episodes to delete (first one: %s)", len(keys), keys[0])
 
-		if len(keys) < 100 {
-			err = ds.DeleteMulti(ctx, keys)
-			if err != nil {
-				return err
-			}
-			return nil
-		}
+	//	if len(keys) < 100 {
+	//		err = ds.DeleteMulti(ctx, keys)
+	//		if err != nil {
+	//			return err
+	//		}
+	//		return nil
+	//	}
 
-		// And delete in batches of 100.
-		for i := 0; i < len(keys); i += 100 {
-			err = ds.DeleteMulti(ctx, keys[i:i+100])
-			if err != nil {
-				return err
-			}
-			log.Printf("Deleted 100 episodes")
-		}
-	}
+	//	// And delete in batches of 100.
+	//	for i := 0; i < len(keys); i += 100 {
+	//		err = ds.DeleteMulti(ctx, keys[i:i+100])
+	//		if err != nil {
+	//			return err
+	//		}
+	//		log.Printf("Deleted 100 episodes")
+	//	}
+	//}
+	return nil
 }
 
-// LoadEpisodeGUIDs loads a map of GUID->ID for all the episodes of the given podcast.
-func LoadEpisodeGUIDs(ctx context.Context, podcastID int64) (map[string]int64, error) {
-	result := make(map[string]int64)
-
-	key := datastore.IDKey("podcast", podcastID, nil)
-	q := datastore.NewQuery("episode").Ancestor(key).Project("GUID")
-	for t := ds.Run(ctx, q); ; {
-		var ep Episode
-		key, err := t.Next(&ep)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
+func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
+	var podcasts []*Podcast
+	for rows.Next() {
+		var podcast Podcast
+		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+			return nil, fmt.Errorf("Error scanning podcast: %w", err)
 		}
 
-		result[ep.GUID] = key.ID
+		podcasts = append(podcasts, &podcast)
 	}
 
-	return result, nil
+	return podcasts, nil
 }
 
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	q := datastore.NewQuery("podcast")
-	var podcasts []*Podcast
-	for t := ds.Run(ctx, q); ; {
-		var podcast Podcast
-		key, err := t.Next(&podcast)
-		if err == iterator.Done {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		podcast.ID = key.ID
-		podcasts = append(podcasts, &podcast)
+	sql := "SELECT id, title, description, image_url, feed_url, last_fetch_time FROM podcasts"
+	rows, err := conn.Query(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("Error querying podcasts: %w", err)
 	}
-	return podcasts, nil
+	defer rows.Close()
+
+	return populatePodcasts(rows)
+}
+
+// SaveEpisodeProgress saves the given EpisodeProgress to the database.
+func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
+	sql := `INSERT INTO episode_progress
+		(account_id, episode_id, position_secs, episode_complete)
+		VALUES ($1, $2, $3, 0)
+		ON CONFLICT (account_id, episode_id) DO UPDATE SET
+		position_secs=$3`
+	_, err := conn.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs)
+	return err
 }

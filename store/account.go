@@ -4,196 +4,154 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 
-	"cloud.google.com/go/datastore"
-	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/api/iterator"
-
+	"github.com/jackc/pgx/v4"
 	"github.com/podcreep/server/util"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Account ...
 type Account struct {
 	// A unique ID for this account.
-	ID int64 `datastore:"-"`
-
+	ID           int64
 	Cookie       string
 	Username     string
 	PasswordHash []byte
-}
-
-// Subscription represents a subscription to a podcast. It is a child entity of the account.
-type Subscription struct {
-	ID int64 `datastore:"-" json:"id"`
-
-	// PodcastID is the identified of the podcast that you're subscribed to.
-	PodcastID int64 `json:"podcastID"`
-
-	// DoneCutoffDate is the date after which we assume all episodes are "done". When you mark an
-	// episode done, if there's nothing else after that episode before this date, we'll simply adjust
-	// the cutoff date to include the new episode. That way, we can keep the episode position list
-	// relatively short.
-	DoneCutoffDate int64 `json:"doneCutoffDate"`
-
-	// Positions is an array of episodeID,offset integer. The first integer is the identifier of the
-	// episide that is being played. The second integer is the offset (in seconds) that playback is
-	// up to for the given user. If the second integer is negative, then the episode has been fully
-	// played.
-	Positions []int64 `json:"-"`
-
-	// PositionsMap is a nicer encoding of Positions for JSON. The key is the episode ID (as a
-	// string, because that's what JSON requires), and the value is the offset in seconds that you're
-	// up to (again, negative for completely-played episodes).
-	PositionsMap map[string]int32 `datastore:"-" json:"positions"`
-
-	// ignored, do not use.
-	Ignored int64 `datastore:"OldestUnlistenedEpisodeID"`
 }
 
 // SaveAccount saves an account to the data store.
 func SaveAccount(ctx context.Context, username, password string) (*Account, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("error hashing password: %v", err)
+		return nil, fmt.Errorf("error hashing password: %w", err)
 	}
 
 	cookie, err := util.CreateCookie()
 	if err != nil {
-		return nil, fmt.Errorf("error creating cookie: %v", err)
+		return nil, fmt.Errorf("error creating cookie: %w", err)
 	}
 
+	sql := "INSERT INTO accounts (cookie, username, password_hash) VALUES($1, $2, $3) RETURNING id"
+	row := conn.QueryRow(ctx, sql, cookie, username, hash)
+
+	var id int64
+	row.Scan(&id)
+
 	acct := &Account{
+		ID:           id,
 		Cookie:       cookie,
 		Username:     username,
 		PasswordHash: hash,
 	}
-	key := datastore.IDKey("account", 0, nil)
-	key, err = ds.Put(ctx, key, acct)
-	if err != nil {
-		return nil, fmt.Errorf("error storing account: %v", err)
-	}
-
-	acct.ID = key.ID
 	return acct, nil
 }
 
 // SaveSubscription saves a new subscription to the data store.
-func SaveSubscription(ctx context.Context, acct *Account, sub *Subscription) (*Subscription, error) {
-	acctKey := datastore.IDKey("account", acct.ID, nil)
-	key := datastore.IDKey("subscription", sub.ID, acctKey)
-
-	key, err := ds.Put(ctx, key, sub)
-	if err != nil {
-		return nil, fmt.Errorf("error storing subscription: %v", err)
-	}
-
-	sub.ID = key.ID
-	return sub, nil
+func SaveSubscription(ctx context.Context, acct *Account, podcastID int64) error {
+	sql := "INSERT INTO subscriptions (podcast_id, account_id) VALUES ($1, $2)"
+	_, err := conn.Exec(ctx, sql, podcastID, acct.ID)
+	return err
 }
 
 // DeleteSubscription deletes a subscription for the given podcast.
-func DeleteSubscription(ctx context.Context, acct *Account, subscriptionID int64) error {
-	acctKey := datastore.IDKey("account", acct.ID, nil)
-	key := datastore.IDKey("subscription", subscriptionID, acctKey)
-	return ds.Delete(ctx, key)
+func DeleteSubscription(ctx context.Context, acct *Account, podcastID int64) error {
+	sql := "DELETE FROM subscriptions WHERE account_id=$1 AND podcast_id=$2"
+	_, err := conn.Exec(ctx, sql, acct.ID, podcastID)
+	return err
 }
 
-func populateSubscription(sub *Subscription) {
-	sub.PositionsMap = make(map[string]int32)
-	for i := 0; i < len(sub.Positions); i += 2 {
-		s := strconv.FormatInt(sub.Positions[i], 10)
-		sub.PositionsMap[s] = int32(sub.Positions[i+1])
+// GetSubscriptions return the Podcasts that this account is subscribed to.
+func GetSubscriptions(ctx context.Context, acct *Account) ([]*Podcast, error) {
+	sql := `SELECT
+			id, title, description, image_url, feed_url, last_fetch_time
+		FROM podcasts
+		  INNER JOIN subscriptions ON podcasts.id = subscriptions.podcast_id
+		WHERE subscriptions.account_id = $1`
+	rows, err := conn.Query(ctx, sql, acct.ID)
+	if err != nil {
+		return nil, fmt.Errorf("Error fetching subscriptions: %w", err)
 	}
+	defer rows.Close()
+
+	return populatePodcasts(rows)
 }
 
-// GetSubscriptions return all of the subscriptions owned by the given account.
-func GetSubscriptions(ctx context.Context, acct *Account) ([]*Subscription, error) {
-	var subscriptions []*Subscription
+// LoadSubscriptionIDs gets the ID of all the podcasts the given account is subscribed to.
+func LoadSubscriptionIDs(ctx context.Context, acct *Account) (map[int64]struct{}, error) {
+	sql := "SELECT podcast_id FROM subscriptions WHERE account_id = $1"
+	rows, err := conn.Query(ctx, sql, acct.ID)
+	if err != nil {
+		return nil, fmt.Errorf("Error fetching subscriptions: %w", err)
+	}
+	defer rows.Close()
 
-	acctKey := datastore.IDKey("account", acct.ID, nil)
-	q := datastore.NewQuery("subscription").Ancestor(acctKey)
-	for row := ds.Run(ctx, q); ; {
-		var subscription Subscription
-		key, err := row.Next(&subscription)
-		if err != nil {
-			if err == iterator.Done {
-				break
-			}
-			return nil, err
+	ids := make(map[int64]struct{})
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("Error scanning podcast: %w", err)
 		}
 
-		subscription.ID = key.ID
-		populateSubscription(&subscription)
-
-		subscriptions = append(subscriptions, &subscription)
+		ids[id] = struct{}{}
 	}
 
-	return subscriptions, nil
+	return ids, nil
 }
 
-// GetSubscription returns the single subscription with the given ID from the given acccount.
-func GetSubscription(ctx context.Context, acct *Account, subID int64) (*Subscription, error) {
-	acctKey := datastore.IDKey("account", acct.ID, nil)
-	subKey := datastore.IDKey("subscription", subID, acctKey)
+// IsSubscribed returns true if the given account is subscribed to the given podcast or not.
+func IsSubscribed(ctx context.Context, acct *Account, podcastID int64) bool {
+	sql := "SELECT * FROM subscriptions WHERE account_id=$1 AND podcast_id=$2"
+	rows, err := conn.Query(ctx, sql, acct.ID, podcastID)
+	defer rows.Close()
 
-	sub := new(Subscription)
-	err := ds.Get(ctx, subKey, sub)
+	return err == nil && rows.Next()
+}
+
+// VerifyUsernameExists returns true if the given username exists or false if it does not exist.
+// An error is returned if there is an error talking to the database.
+func VerifyUsernameExists(ctx context.Context, username string) (bool, error) {
+	rows, err := conn.Query(ctx, "SELECT id, username FROM accounts WHERE username=$1", username)
 	if err != nil {
-		return nil, fmt.Errorf("error loading subscription: %v", err)
+		return false, err
+	}
+	defer rows.Close()
+
+	return rows.Next(), nil
+}
+
+func getAccountFromRow(row pgx.Row) (*Account, error) {
+	var acct Account
+	if err := row.Scan(&acct.ID, &acct.Username, &acct.Cookie, &acct.PasswordHash); err != nil {
+		return nil, fmt.Errorf("Error scanning row: %w", err)
 	}
 
-	log.Printf("fetched a subscription: %v", sub)
-	populateSubscription(sub)
-	return sub, nil
+	return &acct, nil
 }
 
 // LoadAccountByUsername loads the Account for the user with the given username. Returns nil, nil
 // if no account with that username exists.
 func LoadAccountByUsername(ctx context.Context, username, password string) (*Account, error) {
-	q := datastore.NewQuery("account").
-		Filter("Username =", username).
-		Limit(1)
-	for row := ds.Run(ctx, q); ; {
-		var acct Account
-		key, err := row.Next(&acct)
-		if err != nil {
-			if err == iterator.Done {
-				log.Printf("User does not exist %s\n", username)
-				return nil, nil
-			}
-			return nil, err
-		}
+	sql := "SELECT id, username, cookie, password_hash FROM accounts WHERE username=$1"
+	row := conn.QueryRow(ctx, sql, username)
 
-		// Check that the password matches as well.
-		if err := bcrypt.CompareHashAndPassword(acct.PasswordHash, []byte(password)); err != nil {
-			log.Printf("Passwords do not match for user %s: %v\n", username, err)
-			return nil, nil
-		}
-
-		acct.ID = key.ID
-		return &acct, nil
+	acct, err := getAccountFromRow(row)
+	if err != nil {
+		return nil, err
 	}
+
+	// Check that the password matches as well.
+	if err := bcrypt.CompareHashAndPassword(acct.PasswordHash, []byte(password)); err != nil {
+		log.Printf("Passwords do not match for user %s: %v\n", username, err)
+		return nil, nil
+	}
+
+	return acct, nil
 }
 
 // LoadAccountByCookie loads the Account for the user with the given cookie. Returns an error
 // if no account with that cookie exists.
 func LoadAccountByCookie(ctx context.Context, cookie string) (*Account, error) {
-	q := datastore.NewQuery("account").
-		Filter("Cookie =", cookie).
-		Limit(1)
-	for row := ds.Run(ctx, q); ; {
-		var acct Account
-		key, err := row.Next(&acct)
-
-		if err != nil {
-			if err == iterator.Done {
-				return nil, fmt.Errorf("user with cookie '%s' not found", cookie)
-			}
-			return nil, err
-		}
-
-		acct.ID = key.ID
-		return &acct, nil
-	}
+	sql := "SELECT id, username, cookie, password_hash FROM accounts WHERE cookie=$1"
+	row := conn.QueryRow(ctx, sql, cookie)
+	return getAccountFromRow(row)
 }

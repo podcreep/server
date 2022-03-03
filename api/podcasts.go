@@ -11,8 +11,15 @@ import (
 	"github.com/podcreep/server/store"
 )
 
+type podcastDetails struct {
+	store.Podcast
+
+	// IsSubscribed will be true if the current user is subscribed to this podcast.
+	IsSubscribed bool `json:"isSubscribed"`
+}
+
 type podcastList struct {
-	Podcasts []*store.Podcast `json:"podcasts"`
+	Podcasts []*podcastDetails `json:"podcasts"`
 }
 
 // handlePodcastsGet handles requests to view all the podcasts we have in our DB.
@@ -20,7 +27,8 @@ type podcastList struct {
 func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	if _, err := authenticate(ctx, r); err != nil {
+	acct, err := authenticate(ctx, r)
+	if err != nil {
 		http.Error(w, "Not authorized", http.StatusUnauthorized)
 		return
 	}
@@ -32,8 +40,17 @@ func handlePodcastsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	list := podcastList{
-		Podcasts: podcasts,
+	subs, err := store.LoadSubscriptionIDs(ctx, acct)
+	if err != nil {
+		log.Printf("Error fetching subscriptions: %v\n", err)
+		http.Error(w, "Error fetching subscriptions.", http.StatusInternalServerError)
+		return
+	}
+
+	list := podcastList{}
+	for _, podcast := range podcasts {
+		_, is_subbed := subs[podcast.ID]
+		list.Podcasts = append(list.Podcasts, &podcastDetails{*podcast, is_subbed})
 	}
 	err = json.NewEncoder(w).Encode(&list)
 	if err != nil {
@@ -68,23 +85,13 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
 		return
 	}
+	details := podcastDetails{*p, false}
 
-	// Check whether this podcast is subscribed by the current user or not.
-	for i := 0; i < len(p.Subscribers); i += 2 {
-		if p.Subscribers[i] == acct.ID {
-			sub, err := store.GetSubscription(ctx, acct, p.Subscribers[i+1])
-			if err != nil {
-				log.Printf("Error loading subscription: %v\n", err)
-				// Just ignore the error...
-			}
-			p.Subscription = sub
-			break
-		}
-	}
+	if store.IsSubscribed(ctx, acct, p.ID) {
+		details.IsSubscribed = true
 
-	if p.Subscription != nil {
 		// If they're subscribed, get the episode list for this subscription.
-		p.Episodes, err = store.GetEpisodesForSubscription(ctx, p, p.Subscription)
+		details.Episodes, err = store.GetEpisodesForSubscription(ctx, acct, p)
 		if err != nil {
 			log.Printf("Error fetching subscription's episodes: %v", err)
 			http.Error(w, "Error fetching episodes.", http.StatusInternalServerError)
@@ -92,7 +99,7 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Otherwise, just get the latest 20 episodes
-		p.Episodes, err = store.LoadEpisodes(ctx, p.ID, 20)
+		details.Episodes, err = store.LoadEpisodes(ctx, p.ID, 20)
 		if err != nil {
 			log.Printf("Error fetching latest episodes: %v", err)
 			http.Error(w, "Error fetching episodes.", http.StatusInternalServerError)
@@ -109,7 +116,7 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = json.NewEncoder(w).Encode(&p)
+	err = json.NewEncoder(w).Encode(&details)
 	if err != nil {
 		log.Printf("Error encoding podcasts: %v\n", err)
 		http.Error(w, "Error encoding podcasts.", http.StatusInternalServerError)

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -13,19 +12,24 @@ import (
 	"github.com/podcreep/server/store"
 )
 
-// subscriptionDetails contains some additional details we'll include in the subscriptions we return
-// to the client (for example, we'll include the details of the podcast itself).
-type subscriptionDetails struct {
-	store.Subscription
+const (
+	// NewEpisodeDays is the number of days worth of episodes we'll fetch
+	NewEpisodeDays = 30
+)
 
+// subscription represents a subscription to a podcast. It is a child entity of the account.
+type subscription struct {
+	// Podcast is the podcast this subscription is for.
 	Podcast *store.Podcast `json:"podcast"`
+
+	// PositionsMap is a nicer encoding of Positions for JSON. The key is the episode ID (as a
+	// string, because that's what JSON requires), and the value is the offset in seconds that you're
+	// up to (again, negative for completely-played episodes).
+	Positions map[string]int32 `json:"positions"`
 }
 
 type episodeDetails struct {
 	store.Episode
-
-	// PodcastID because we don't normally store this with the episode in the store.
-	PodcastID int64 `json:"podcastID"`
 
 	// Position is the progress you've made into this episode.
 	Position int32 `json:"position"`
@@ -33,10 +37,9 @@ type episodeDetails struct {
 
 // This is returned to the client when it requests the users subscriptions.
 type subscriptionDetailsList struct {
-	Subscriptions []subscriptionDetails `json:"subscriptions"`
-
-	NewEpisodes []episodeDetails `json:"newEpisodes"`
-	InProgress  []episodeDetails `json:"inProgress"`
+	Subscriptions []subscription    `json:"subscriptions"`
+	NewEpisodes   []*episodeDetails `json:"newEpisodes"`
+	InProgress    []*episodeDetails `json:"inProgress"`
 }
 
 type subscriptionsSyncPostRequest struct {
@@ -44,34 +47,28 @@ type subscriptionsSyncPostRequest struct {
 }
 
 type subscriptionsSyncPostResponse struct {
-	Subscriptions []subscriptionDetails `json:"subscriptions"`
+	Subscriptions []subscription `json:"subscriptions"`
 }
 
-func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscriptionDetails, error) {
+func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscription, error) {
 	subs, err := store.GetSubscriptions(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
 	log.Printf("Got %d subscription(s) for %s\n", len(subs), acct.Username)
 
-	// TODO: don't fetch all the podcasts just to filter out a few...
-	podcasts, err := store.LoadPodcasts(ctx)
+	podcasts, err := store.GetSubscriptions(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
 
-	var details []subscriptionDetails
-	for _, s := range subs {
-		d := subscriptionDetails{*s, nil}
-		for _, p := range podcasts {
-			if p.ID == d.Subscription.PodcastID {
-				d.Podcast = p
-			}
-		}
-		details = append(details, d)
+	var subscriptions []subscription
+	for _, podcast := range podcasts {
+		sub := subscription{podcast, make(map[string]int32)}
+		subscriptions = append(subscriptions, sub)
 	}
 
-	return details, nil
+	return subscriptions, nil
 }
 
 // handleSubscriptionsGet handles a GET request for /api/subscriptions, and returns all of the
@@ -94,33 +91,31 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the new episodes for this user. We'll grab the first 10 episodes for each podcast
-	// they're subscribed to, then intermix them all together.
-	var newEpisodes []episodeDetails
-	var inProgress []episodeDetails
-	for _, s := range subscriptionDetails {
-		ne, ip, err := store.GetEpisodesNewAndInProgressForSubscription(ctx, s.Podcast, &s.Subscription)
-		if err != nil {
-			log.Printf("Error getting episodes: %v\n", err)
-			http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-			return
-		}
+	// Get the new episodes for this user. We'll grab all episodes from the last 30 days for each
+	// podcast they're subscribed to, then intermix them all together.
+	var newEpisodes []*episodeDetails
+	var inProgress []*episodeDetails
+	podcastIDs := make(map[int64]struct{})
+	ne, ip, err := store.GetEpisodesNewAndInProgress(ctx, acct, NewEpisodeDays)
+	if err != nil {
+		log.Printf("Error getting episodes: %v\n", err)
+		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
+		return
+	}
 
-		for _, ep := range ne {
-			newEpisodes = append(newEpisodes, episodeDetails{
-				Episode:   *ep,
-				PodcastID: s.PodcastID,
-				Position:  0,
-			})
-		}
-		for _, ep := range ip {
-			strID := strconv.FormatInt(ep.ID, 10)
-			inProgress = append(inProgress, episodeDetails{
-				Episode:   *ep,
-				PodcastID: s.PodcastID,
-				Position:  s.PositionsMap[strID],
-			})
-		}
+	for _, ep := range ne {
+		podcastIDs[ep.PodcastID] = struct{}{}
+		newEpisodes = append(newEpisodes, &episodeDetails{
+			Episode:  *ep,
+			Position: 0,
+		})
+	}
+	for _, ep := range ip {
+		podcastIDs[ep.PodcastID] = struct{}{}
+		inProgress = append(inProgress, &episodeDetails{
+			Episode:  ep.Episode,
+			Position: ep.Position,
+		})
 	}
 	sort.Slice(newEpisodes, func(i, j int) bool {
 		return newEpisodes[i].PubDate.After(newEpisodes[j].PubDate)
@@ -158,42 +153,9 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s := &store.Subscription{
-		PodcastID: podcastID,
-	}
-	s, err = store.SaveSubscription(ctx, acct, s)
-	if err != nil {
+	if err := store.SaveSubscription(ctx, acct, podcastID); err != nil {
 		log.Printf("Error saving subscription: %v\n", err)
 		http.Error(w, "Error saving subscription", http.StatusInternalServerError)
-		return
-	}
-
-	err = store.RunInTransaction(ctx, func(t *store.Transaction) error {
-		p, err := store.GetPodcast(ctx, podcastID)
-		if err != nil {
-			return fmt.Errorf("error loading podcast: %v", err)
-		}
-
-		p.Subscribers = append(p.Subscribers, acct.ID, s.ID)
-		_, err = store.SavePodcast(ctx, p)
-		if err != nil {
-			// Ignoring this error.
-			_ = store.DeleteSubscription(ctx, acct, s.ID)
-			return fmt.Errorf("error saving podcast: %v", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		log.Printf("Error updating podcast: %s\n", err)
-		http.Error(w, "Error setting up subscription.", http.StatusInternalServerError)
-		return
-	}
-
-	err = json.NewEncoder(w).Encode(s)
-	if err != nil {
-		log.Printf("Error encoding account: %v\n", err)
-		http.Error(w, "Error encoding account.", http.StatusInternalServerError)
 		return
 	}
 }
@@ -218,52 +180,12 @@ func handleSubscriptionsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscriptionID, err := strconv.ParseInt(vars["sub"], 10, 0)
-	if err != nil {
-		log.Printf("Error parsing sub ID: %s\n", vars["sub"])
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-
-	err = store.DeleteSubscription(ctx, acct, subscriptionID)
+	err = store.DeleteSubscription(ctx, acct, podcastID)
 	if err != nil {
 		log.Printf("Error deleting subscription: %v\n", err)
 		http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
 		return
 	}
-
-	err = store.RunInTransaction(ctx, func(t *store.Transaction) error {
-		p, err := store.GetPodcast(ctx, podcastID)
-		if err != nil {
-			return fmt.Errorf("error loading podcast: %v", err)
-		}
-
-		for i := 0; i < len(p.Subscribers); i += 2 {
-			if p.Subscribers[i] == acct.ID {
-				p.Subscribers = append(p.Subscribers[:i], p.Subscribers[i+2:]...)
-				break
-			}
-		}
-		_, err = store.SavePodcast(ctx, p)
-		if err != nil {
-			return fmt.Errorf("error saving podcast: %v", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		log.Printf("Error updating podcast: %s\n", err)
-		http.Error(w, "Error setting up subscription.", http.StatusInternalServerError)
-		return
-	}
-
-	// TODO?
-	//err = json.NewEncoder(w).Encode(p)
-	//if err != nil {
-	//	log.Printf("Error encoding account: %v\n", err)
-	//	http.Error(w, "Error encoding account.", http.StatusInternalServerError)
-	//	return
-	//}
 }
 
 // handleSubscriptionsSync handles a request for /api/subscriptions/sync
@@ -302,7 +224,7 @@ func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		p.Episodes, err = store.GetEpisodesForSubscription(ctx, p, &sub.Subscription)
+		p.Episodes, err = store.GetEpisodesForSubscription(ctx, acct, p)
 		if err != nil {
 			log.Printf("Error fetching episodes: %v\n", err)
 			http.Error(w, "Error fetching episodes.", http.StatusInternalServerError)

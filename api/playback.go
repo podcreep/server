@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/podcreep/server/store"
 )
@@ -43,81 +42,21 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs, err := store.GetSubscriptions(ctx, acct)
-	if err != nil {
-		log.Printf("Error fetching subscriptions: %v\n", err)
-		http.Error(w, "Error fetching subscriptions.", http.StatusInternalServerError)
-		return
-	}
-
-	var sub *store.Subscription
-	for _, s := range subs {
-		if s.PodcastID == playbackState.PodcastID {
-			sub = s
-			break
-		}
-	}
-	if sub == nil {
+	if !store.IsSubscribed(ctx, acct, playbackState.PodcastID) {
 		// You're not subscribed to this episode. We don't save the state if you're not subbed.
 		log.Printf("No subscription found, can't update state.\n")
 		return
 	}
 
-	found := false
-	for i := 0; i < len(sub.Positions); i += 2 {
-		if sub.Positions[i] == playbackState.EpisodeID {
-			if playbackState.Position < 0 {
-				// Any number less than zero becomes -1.
-				sub.Positions[i+1] = -1
-			} else {
-				sub.Positions[i+1] = int64(playbackState.Position)
-			}
-			found = true
-		}
+	progress := store.EpisodeProgress{
+		AccountID:       acct.ID,
+		EpisodeID:       playbackState.EpisodeID,
+		PositionSecs:    playbackState.Position,
+		EpisodeComplete: false, // TODO
 	}
-	if !found {
-		sub.Positions = append(sub.Positions, playbackState.EpisodeID, int64(playbackState.Position))
-	}
-
-	if playbackState.Position < 0 {
-		// OK this episode is done. Let's check if we need to update DoneCutoffDate in the subscription.
-		p, err := store.GetPodcast(ctx, playbackState.PodcastID)
-		if err != nil {
-			log.Printf("Error fetching podcast: %v", err)
-			http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
-			return
-		}
-
-		ep, err := store.GetEpisode(ctx, p, playbackState.EpisodeID)
-		if err != nil {
-			log.Printf("Error fetching episode: %v", err)
-			http.Error(w, "Error fetching episode.", http.StatusInternalServerError)
-			return
-		}
-
-		if playbackState.UpdateDoneCutoffDate {
-			// If we've been asked explicitly to update the done cutoff date, then do it (actually, unless
-			// the existing cutoff is newer...)
-			doneCutoffDate := time.Unix(sub.DoneCutoffDate, 0)
-			if doneCutoffDate.Before(ep.PubDate) {
-				sub.DoneCutoffDate = ep.PubDate.Unix()
-			}
-		} else if sub.DoneCutoffDate > 0 {
-			// Check if there's any non-done episodes between this one and the existing DoneCutoffDate
-			// TODO and stuff
-		}
-	}
-
-	sub, err = store.SaveSubscription(ctx, acct, sub)
-	if err != nil {
-		log.Printf("Error saving subscription: %v\n", err)
-		// But we won't return an error to the client.
-	}
-
-	err = json.NewEncoder(w).Encode(sub)
-	if err != nil {
-		log.Printf("Error encoding subscription: %v\n", err)
-		http.Error(w, "Error encoding subscription.", http.StatusInternalServerError)
+	// TODO: update playback state
+	if err := store.SaveEpisodeProgress(ctx, &progress); err != nil {
+		log.Printf("Error saving progress. %v", err)
 		return
 	}
 }

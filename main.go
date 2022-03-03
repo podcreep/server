@@ -11,6 +11,7 @@ import (
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
 	"github.com/podcreep/server/cron"
+	"github.com/podcreep/server/store"
 )
 
 func setupStaticFiles(r *mux.Router) {
@@ -32,6 +33,9 @@ func main() {
 		port = "8080"
 	}
 
+	if err := store.Setup(); err != nil {
+		panic(err)
+	}
 	r := mux.NewRouter()
 	if err := admin.Setup(r); err != nil {
 		panic(err)

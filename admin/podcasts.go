@@ -90,7 +90,9 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Saving: %v\n", podcast)
 	id, err := store.SavePodcast(ctx, podcast)
 	if err != nil {
-		// TODO: handle error
+		log.Printf("Error saving podcast: %v", err)
+		http.Error(w, "Error saving podcast", 500)
+		return
 	}
 	podcast.ID = id
 

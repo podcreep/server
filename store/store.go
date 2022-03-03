@@ -3,18 +3,33 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"os"
 
-	"cloud.google.com/go/datastore"
+	"github.com/jackc/pgx/v4"
 )
 
 var (
-	ds *datastore.Client
+	conn *pgx.Conn
 )
 
-func init() {
+func Setup() error {
+	var ctx = context.Background()
 	var err error
-	ds, err = datastore.NewClient(context.Background(), "")
+
+	dburl := os.Getenv("DATABASE_URL")
+	conn, err = pgx.Connect(ctx, dburl)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("unable to connect to database: %s %w", dburl, err)
 	}
+
+	// Check what version of the datastore we have, and upgrade it if nessecary.
+	version := GetCurrentSchemaVersion(ctx)
+	log.Printf("Got schema version %d", version)
+	if err := UpgradeSchema(ctx, version); err != nil {
+		return err
+	}
+
+	return nil
 }

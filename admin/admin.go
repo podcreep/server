@@ -4,27 +4,18 @@ package admin
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/util"
-
-	oauth2 "google.golang.org/api/oauth2/v2"
 )
 
-const (
-	clientID = "683097828984-0bsih3puj8t271s3igc97spje3igr1v7.apps.googleusercontent.com"
-)
+type sessionInfo struct{}
 
 var (
-	// sessions is the in-memory map we keep our session info in.
-	// TODO(dean): Make this stored in the database or something
 	sessions = make(map[string]sessionInfo)
 )
-
-type sessionInfo struct {
-	email string
-}
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
 	data := struct {
@@ -46,36 +37,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc, err := oauth2.New(&http.Client{})
-	if err != nil {
-		log.Printf("Error getting oauth2 service: %v", err)
-		http.Error(w, "Error getting oauth2 service", 500)
-		return
-	}
-
-	idToken := r.Form.Get("idToken")
-	tokenInfo, err := svc.Tokeninfo().IdToken(idToken).Do()
-	if err != nil {
-		log.Printf("Error getting tokeninfo: %v", err)
-		http.Error(w, "Error getting tokeninfo", 403)
-		return
-	}
-
-	if tokenInfo.Email != r.Form.Get("email") {
-		log.Printf("Associated email does not match (given %s, wanted %s)", r.Form.Get("email"), tokenInfo.Email)
-		http.Error(w, "Forbidden", 403)
-		return
-	}
-
-	if tokenInfo.Email != "dean@codeka.com.au" {
-		log.Printf("Someone, not me, has tried to log in: %s", tokenInfo.Email)
-		http.Error(w, "Forbidden", 403)
-		return
-	}
-
-	if tokenInfo.Audience != clientID {
-		log.Printf("Audience does not match (given %s, wanted %s)", tokenInfo.Audience, clientID)
-		http.Error(w, "Forbidden", 403)
+	password := r.Form.Get("password")
+	if os.Getenv("ADMIN_PASSWORD") == "" || password != os.Getenv("ADMIN_PASSWORD") {
+		log.Printf("Admin password does not match ADMIN_PASSWORD environment variable")
+		http.Error(w, "Invalid password", 400)
 		return
 	}
 
@@ -86,9 +51,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessions[cookieValue] = sessionInfo{
-		email: tokenInfo.Email,
-	}
+	sessions[cookieValue] = sessionInfo{}
 
 	expire := time.Now().AddDate(0, 0, 1)
 	cookie := http.Cookie{
@@ -97,6 +60,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		Expires: expire,
 	}
 	http.SetCookie(w, &cookie)
+
+	http.Redirect(w, r, "/admin", 302)
 }
 
 // authMiddleware is some middleware that ensures the user is authenticated before allowing them
@@ -116,8 +81,7 @@ func authMiddleware(h http.Handler) http.Handler {
 			return
 		}
 
-		sess := sessions[cookie.Value]
-		if sess.email != "dean@codeka.com.au" {
+		if _, ok := sessions[cookie.Value]; !ok {
 			log.Printf("Invalid cookie value, redirecting to login.")
 			http.Redirect(w, r, "/admin/login", 302)
 			return

@@ -20,19 +20,21 @@ var (
 	htmlPolicy = bluemonday.NewPolicy()
 )
 
-func updateEpisode(ctx context.Context, ep *store.Episode, item Item, p *store.Podcast) error {
+func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 	pubDate, err := parsePubDate(item.PubDate)
 	if err != nil {
 		return fmt.Errorf("error parsing date: %v", err)
 	}
 
-	ep.GUID = item.GUID
-	ep.MediaURL = item.Media.URL
-	ep.Title = item.Title
-	ep.Description = item.Description
-	ep.DescriptionHTML = false
-	ep.ShortDescription = item.Description
-	ep.PubDate = pubDate
+	var ep = store.Episode{
+		GUID:             item.GUID,
+		MediaURL:         item.Media.URL,
+		Title:            item.Title,
+		Description:      item.Description,
+		DescriptionHTML:  false,
+		ShortDescription: item.Description,
+		PubDate:          pubDate,
+	}
 
 	if item.EncodedDescription != "" {
 		ep.Description = item.EncodedDescription
@@ -46,55 +48,12 @@ func updateEpisode(ctx context.Context, ep *store.Episode, item Item, p *store.P
 		ep.ShortDescription = ep.ShortDescription[0:77+index] + "..."
 	}
 
-	if ep.ID == 0 {
-		log.Printf(" - new episode [%v] '%s', updating", ep.PubDate, ep.Title)
-	} else {
-		log.Printf(" - updated episode %d [%v] '%s', updating", ep.ID, ep.PubDate, ep.Title)
-	}
-	_, err = store.SaveEpisode(ctx, p, ep)
-	if err != nil {
+	log.Printf(" - episode [%v] '%s', updating", ep.PubDate, ep.Title)
+	if err := store.SaveEpisode(ctx, p, &ep); err != nil {
 		return fmt.Errorf("error saving episode: %v", err)
 	}
 
 	return nil
-}
-
-// maybeUpdateEpisode will update any new episode we're given.
-func maybeUpdateEpisode(ctx context.Context, item Item, p *store.Podcast) (bool, error) {
-	pubDate, err := parsePubDate(item.PubDate)
-	if err != nil {
-		log.Printf(" - failed to parse pubdate '%s' of '%s': %v\n", item.PubDate, item.Title, err)
-		return false, fmt.Errorf("error parsing date: %v", err)
-	}
-
-	// First, check if it's too old entirely. The last episode in the podcast we have is the oldest
-	// thing we'll bother to update.
-	if len(p.Episodes) > 0 {
-		if p.Episodes[len(p.Episodes)-1].PubDate.After(pubDate) {
-			return false, nil
-		}
-	}
-
-	// If it's in the list of episodes we already have, just ignore it as well (we don't bother
-	// to update existing episodes)
-	// TODO: is it OK to skip episodes?
-	for _, existing := range p.Episodes {
-		if existing.GUID == item.GUID {
-			return false, nil
-		}
-	}
-
-	// OK, seems to be new, add it.
-	ep := &store.Episode{}
-	return true, updateEpisode(ctx, ep, item, p)
-}
-
-// forceUpdateEpisode updates an episode even if it already exists in the data store.
-func forceUpdateEpisode(ctx context.Context, item Item, p *store.Podcast, guidMap map[string]int64) error {
-	ep := &store.Episode{
-		ID: guidMap[item.GUID],
-	}
-	return updateEpisode(ctx, ep, item, p)
 }
 
 // UpdatePodcast fetches the feed URL for the given podcast, parses it and updates all of the
@@ -109,10 +68,6 @@ func forceUpdateEpisode(ctx context.Context, item Item, p *store.Podcast, guidMa
 // then we assume this is a new podcast and load everything).
 //
 // If force is true, then we ignore existing episodes and re-store all episodes in the RSS file.
-//
-// Because the website we're downloading from can some times time out before we finish processing
-// the file, if we're downloading all episodes (either force is true, or there's no existing
-// episodes), then we download all items first before processing them.
 func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, error) {
 	log.Printf("Updating podcast: [%d] %s", p.ID, p.Title)
 
@@ -150,7 +105,6 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 	// structure, basically skipping everything that's not an <item> element (where the episode
 	// details are stored).
 	var item Item
-	var items []Item
 	decoder := xml.NewDecoder(resp.Body)
 	numUpdated := 0
 	for {
@@ -175,35 +129,12 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 					return 0, err
 				}
 
-				if force {
-					items = append(items, item)
-				} else {
-					wasUpdated, err := maybeUpdateEpisode(ctx, item, p)
-					if err != nil {
-						log.Printf("Error updating item: %v", err)
-						return 0, err
-					}
-					if wasUpdated {
-						numUpdated++
-					}
+				if err := updateEpisode(ctx, item, p); err != nil {
+					log.Printf("Error updating item: %v", err)
+					return numUpdated, err
 				}
+				numUpdated++
 			}
-		}
-	}
-
-	if force {
-		guidMap, err := store.LoadEpisodeGUIDs(ctx, p.ID)
-		if err != nil {
-			return 0, err
-		}
-		log.Printf("%d entries in GUID map", len(guidMap))
-		for _, item := range items {
-			err := forceUpdateEpisode(ctx, item, p, guidMap)
-			if err != nil {
-				log.Printf("Error updating item: %v", err)
-				return 0, err
-			}
-			numUpdated++
 		}
 	}
 

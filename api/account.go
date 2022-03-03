@@ -9,10 +9,18 @@ import (
 )
 
 func handleAccountsGet(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("username") == "codeka" {
+	ctx := r.Context()
+	username := r.URL.Query().Get("username")
+	exists, err := store.VerifyUsernameExists(ctx, username)
+	if err != nil {
+		log.Printf("Error querying for username: %v\n", err)
+		http.Error(w, "Error", http.StatusInternalServerError)
 		return
 	}
-	http.Error(w, "Something", 404)
+
+	if !exists {
+		http.Error(w, "Username does not exist", 404)
+	}
 }
 
 type accountsPostRequest struct {
