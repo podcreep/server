@@ -13,7 +13,7 @@ like this:
 
 ## Dependencies
 
-Go 1.12 is required to run the server.
+Go 1.17 is required to run the server.
 
 ## Running locally
 
@@ -23,11 +23,15 @@ modern version should do.
 ### Environment variables and running
 
 Next, we use a couple of environment variable to configure the database connection, debug mode and
-admin secret password. See run.bat/run.sh for examples.
+admin secret password.
 
 Finally, run the server. But make sure the environment variable above are visible to it!
 
     $ go run main.go
+
+There's a helper script that makes running locally a bit easier:
+
+    $ python3 run.py
 
 ## Running a client
 
