@@ -109,6 +109,9 @@ func Setup(r *mux.Router) error {
 	subr.HandleFunc("/podcasts", handlePodcastsList).Methods("GET")
 	subr.HandleFunc("/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
 	subr.HandleFunc("/podcasts/edit", handlePodcastsEditPost).Methods("POST")
+	subr.HandleFunc("/cron", handleCron).Methods("GET")
+	subr.HandleFunc("/cron/add", handleCronAdd).Methods("GET")
+	subr.HandleFunc("/cron/edit", handleCronEdit).Methods("GET", "POST")
 
 	return nil
 }

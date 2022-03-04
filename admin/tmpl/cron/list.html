@@ -1,0 +1,30 @@
+{{define "style"}}
+<style>
+</style>
+{{end}}
+
+{{define "content"}}
+<h1>Cron</h1>
+
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>Job</th>
+      <th>Scheduled</th>
+      <th></th>
+      <th>Next run</th>
+      <th></th>
+    </tr>
+  {{range $index, $j := .CronJobs}}
+    <tr>
+      <td>{{$j.ID}}</td>
+      <td>{{$j.Name}}</td>
+      <td>{{$j.Schedule}}</td>
+      <td>{{$j.Enabled}}</td>
+      <td>{{$j.NextRun}}</td>
+      <td><a href="">Edit</a> &bull; <a href="">Delete</a></td>
+    </tr>
+  {{end}}
+  </table>
+  <a href="/admin/cron/add">Add</a>
+{{end}}

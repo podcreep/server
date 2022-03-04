@@ -21,14 +21,14 @@ func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
 		// TODO: handle error
 	}
 
-	render(w, "podcast-list.html", map[string]interface{}{
+	render(w, "podcast/list.html", map[string]interface{}{
 		"Podcasts": podcasts,
 	})
 }
 
 func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		render(w, "podcast-add.html", nil)
+		render(w, "podcast/add.html", nil)
 		return
 	}
 
@@ -64,7 +64,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 		FeedURL:     feed.Channel.Link.Href,
 	}
 
-	render(w, "podcast-edit.html", map[string]interface{}{
+	render(w, "podcast/edit.html", map[string]interface{}{
 		"Podcast": podcast,
 	})
 }
@@ -96,7 +96,7 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
 	}
 	podcast.ID = id
 
-	render(w, "podcast-edit.html", map[string]interface{}{
+	render(w, "podcast/edit.html", map[string]interface{}{
 		"Podcast": podcast,
 	})
 }

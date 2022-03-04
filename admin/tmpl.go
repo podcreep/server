@@ -3,8 +3,10 @@ package admin
 import (
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -30,25 +32,33 @@ func initTemplates() error {
 	if err != nil {
 		return fmt.Errorf("error loading skeletons: %v", err)
 	}
-	tmplFiles, err := filepath.Glob("admin/tmpl/*.html")
-	if err != nil {
-		return fmt.Errorf("error loading templates: %v", err)
-	}
 	mainTmpl, err := template.New("main").Parse(`{{define "main" }}{{ template "base" . }}{{ end }}`)
 	if err != nil {
 		return fmt.Errorf("error parsing main template: %v", err)
 	}
 
 	templates = make(map[string]*template.Template)
-	for _, tmplFile := range tmplFiles {
-		fileName := filepath.Base(tmplFile)
-		files := append(skeletons, tmplFile)
+	return filepath.Walk("admin/tmpl/", func(path string, info fs.FileInfo, err error) error {
+		if strings.HasPrefix(filepath.Base(path), "_") {
+			return nil
+		}
+		if filepath.Ext(path) != ".html" {
+			return nil
+		}
+
+		name, err := filepath.Rel("admin/tmpl", path)
+		if err != nil {
+			return err
+		}
+		// On windows, the path will have \\ but we want consistent naming on all platforms.
+		name = strings.ReplaceAll(name, "\\", "/")
+		files := append(skeletons, path)
 		tmpl, err := mainTmpl.Clone()
 		if err != nil {
-			return fmt.Errorf("here %v", err)
+			return err
 		}
-		templates[fileName] = template.Must(tmpl.ParseFiles(files...))
-	}
 
-	return nil
+		templates[name] = template.Must(tmpl.ParseFiles(files...))
+		return nil
+	})
 }
