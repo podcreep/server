@@ -1,7 +1,15 @@
 {{define "style"}}
 <style>
+  p span {
+    display: inline-block;
+    width: 100px;
+  }
   input {
-    width: 600px;
+    width: 240px;
+  }
+  input[type=checkbox] {
+    margin-left: 100px;
+    width: 30px;
   }
 </style>
 {{end}}
@@ -9,8 +17,12 @@
 {{define "content"}}
 <form method="post" action="/admin/cron/edit">
   <input type="hidden" name="ID" value="{{.CronJob.ID}}">
-  <p><input type="text" name="Name" class="name" value="{{.CronJob.Name}}"></p>
-  <p><input type="text" name="Schedule" value="{{.CronJob.Schedule}}"></p>
+  <p><span>Name</span><select name="Name" class="name" value="{{.CronJob.Name}}">
+  {{range $index, $j := .AvailableJobs}}
+    <option{{if eq $j $.CronJob.Name}} selected{{end}}>{{$j}}</option>
+  {{end}}
+  </select></p>
+  <p><span>Schedule</span><input type="text" name="Schedule" value="{{.CronJob.Schedule}}"></p>
   <p><input type="checkbox" name="Enabled" id="CronJobEnabled"><label for="CronJobEnabled">Enabled</label></p>
   <p><button type="submit">Save</button></p>
 </form>

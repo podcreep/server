@@ -15,24 +15,24 @@ import (
 	"github.com/podcreep/server/store"
 )
 
-// handleCronCheckUpdates is run every now and then to check for updates to our podcasts. We only
-// do one podcast per call to this method (otherwise we tend to run out of memory parsing all that
-// XML and stuff).
+var (
+	Jobs map[string]func(context.Context) error
+)
+
+// cronCheckUpdates checks for updates to our podcasts. We only do one podcast per call to this
+// method, so it should be called relatively frequenctly.
+//
 // To decide which podcast to update, we look at how long it has been since the last update: we
 // pick the podcast with the oldest update, as long as it's been more than one hour.
-func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func cronCheckUpdates(ctx context.Context) error {
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
-		log.Printf("Error loading podcasts: %v\n", err)
-		http.Error(w, "Error loading podcasts.", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	if len(podcasts) == 0 {
 		log.Printf("No podcasts.")
-		return
+		return nil
 	}
 
 	// Sort the podcasts by LastFetchTime, so that the first podcast in the list is the one that
@@ -44,17 +44,16 @@ func handleCronCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	p := podcasts[0]
 	if p.LastFetchTime.After(time.Now().Add(-1 * time.Hour)) {
 		log.Printf("Oldest podcast ('%s') was only updated at %v, not updating again.", p.Title, p.LastFetchTime)
-		io.WriteString(w, fmt.Sprintf("No podcasts to update. Oldest podcast, %s, was updated %v", p.Title, p.LastFetchTime))
-		return
+		return nil
 	}
 
 	log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
 	numUpdated, err := updatePodcast(ctx, p, false)
 	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Error updating podcast: %v", err))
-	} else {
-		io.WriteString(w, fmt.Sprintf("Updated: %s (%d new episodes)", p.Title, numUpdated))
+		return fmt.Errorf("Error updating podcast: %w", err)
 	}
+	log.Printf(" - updated %d episodes", numUpdated)
+	return nil
 }
 
 // handleCronForceUpdate does a "force" update on a podcast, including re-downloading and storing
@@ -134,11 +133,21 @@ func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int
 	return numUpdated, error
 }
 
+// Gets a list of the cron job names.
+func GetCronJobNames() []string {
+	var names []string
+	for k := range Jobs {
+		names = append(names, k)
+	}
+	return names
+}
+
 // Setup is called from server.go and sets up our routes, etc.
 func Setup(r *mux.Router) error {
-	r.HandleFunc("/cron/check-updates", handleCronCheckUpdates).Methods("GET")
-	r.HandleFunc("/cron/force-update/{id:[0-9]+}", handleCronForceUpdate).Methods("GET")
-	r.HandleFunc("/cron/clear-episodes/{id:[0-9]+}", handleClearEpisodes).Methods("GET")
+	Jobs = make(map[string]func(context.Context) error)
+	Jobs["check-updates"] = cronCheckUpdates
+	//	r.HandleFunc("/cron/force-update/{id:[0-9]+}", handleCronForceUpdate).Methods("GET")
+	//	r.HandleFunc("/cron/clear-episodes/{id:[0-9]+}", handleClearEpisodes).Methods("GET")
 
 	return nil
 }

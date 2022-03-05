@@ -35,6 +35,30 @@ func LoadCrobJobs(ctx context.Context) ([]*CronJob, error) {
 	return jobs, nil
 }
 
+// LoadCronJob returns a single cron job with the given ID from the database.
+func LoadCrobJob(ctx context.Context, id int64) (*CronJob, error) {
+	// TODO: just load the one? loading all and picking it is kind of inefficient, but if there's
+	// only a handful, maybe it's not worth the effort to optimize this.
+	cronJobs, err := LoadCrobJobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cronJob := range cronJobs {
+		if cronJob.ID == id {
+			return cronJob, nil
+		}
+	}
+	return nil, fmt.Errorf("No such cron job: %d", id)
+}
+
+// DeleteCronJob deletes the given cron job from the database.
+func DeleteCronJob(ctx context.Context, id int64) error {
+	sql := "DELETE FROM cron WHERE id = $1"
+	_, err := conn.Exec(ctx, sql, id)
+	return err
+}
+
 // SaveCronJob saves the given cron job to the database.
 func SaveCronJob(ctx context.Context, job *CronJob) error {
 	if job.ID == 0 {

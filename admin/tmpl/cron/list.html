@@ -8,7 +8,7 @@
 
   <table>
     <tr>
-      <th>ID</th>
+      <th></th>
       <th>Job</th>
       <th>Scheduled</th>
       <th></th>
@@ -22,7 +22,7 @@
       <td>{{$j.Schedule}}</td>
       <td>{{$j.Enabled}}</td>
       <td>{{$j.NextRun}}</td>
-      <td><a href="">Edit</a> &bull; <a href="">Delete</a></td>
+      <td><a href="">Edit</a> &bull; <a href="/admin/cron/{{$j.ID}}/delete">Delete</a></td>
     </tr>
   {{end}}
   </table>

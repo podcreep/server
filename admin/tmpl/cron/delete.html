@@ -1,0 +1,8 @@
+{{define "content"}}
+<h1>Are you sure?</h1>
+<p>Are you sure you want to delete the job "{{.CronJob.Name}}", schedule to run with schedule
+  "{{.CronJob.Schedule}}"? This cannot be undone.</p>
+<form method="post" action="/admin/cron/{{.CronJob.ID}}/delete">
+  <p><button type="submit">Delete</button></p>
+</form>
+{{end}}

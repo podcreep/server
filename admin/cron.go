@@ -3,8 +3,11 @@ package admin
 import (
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
+	"github.com/podcreep/server/cron"
 	"github.com/podcreep/server/store"
 )
 
@@ -23,10 +26,15 @@ func handleCron(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleCronAdd(w http.ResponseWriter, r *http.Request) {
+func renderEditPage(w http.ResponseWriter, cronJob *store.CronJob) {
 	render(w, "cron/edit.html", map[string]interface{}{
-		"CronJob": store.CronJob{},
+		"AvailableJobs": cron.GetCronJobNames(),
+		"CronJob":       cronJob,
 	})
+}
+
+func handleCronAdd(w http.ResponseWriter, r *http.Request) {
+	renderEditPage(w, &store.CronJob{})
 }
 
 func handleCronEdit(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +73,37 @@ func handleCronEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	render(w, "cron/edit.html", map[string]interface{}{
-		"CronJob": store.CronJob{},
+	renderEditPage(w, &store.CronJob{})
+}
+
+func handleCronDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	cronID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		log.Printf("Error parsing ID: %s\n", vars["id"])
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	cronJob, err := store.LoadCrobJob(ctx, cronID)
+	if err != nil {
+		log.Printf("error: %v\n", err)
+		// TODO: handle error
+	}
+
+	if r.Method == "POST" {
+		if err := store.DeleteCronJob(ctx, cronID); err != nil {
+			log.Printf("error: %v", err)
+			// TODO: handle error
+		}
+
+		http.Redirect(w, r, "/admin/cron", 302)
+		return
+	}
+
+	render(w, "cron/delete.html", map[string]interface{}{
+		"CronJob": cronJob,
 	})
 }
