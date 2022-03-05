@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"github.com/podcreep/server/store"
@@ -26,26 +25,23 @@ type PlaybackState struct {
 
 // handlePlaybackStatePut handles requests to update the playback state of a single episode of a
 // single podcast.
-func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) {
+func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		http.Error(w, "Not authorized", http.StatusUnauthorized)
-		return
+		return apiError("Not authorized", http.StatusUnauthorized)
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	playbackState := PlaybackState{}
 	if err := decoder.Decode(&playbackState); err != nil {
-		http.Error(w, "Request is not valid", http.StatusBadRequest)
-		return
+		return apiError("Request is not valid", http.StatusBadRequest)
 	}
 
 	if !store.IsSubscribed(ctx, acct, playbackState.PodcastID) {
 		// You're not subscribed to this episode. We don't save the state if you're not subbed.
-		log.Printf("No subscription found, can't update state.\n")
-		return
+		return apiError("No subscription found, can't update state.", http.StatusBadRequest)
 	}
 
 	progress := store.EpisodeProgress{
@@ -56,7 +52,8 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) {
 	}
 	// TODO: update playback state
 	if err := store.SaveEpisodeProgress(ctx, &progress); err != nil {
-		log.Printf("Error saving progress. %v", err)
-		return
+		return err
 	}
+
+	return nil
 }

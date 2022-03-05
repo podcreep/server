@@ -73,22 +73,18 @@ func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscription,
 
 // handleSubscriptionsGet handles a GET request for /api/subscriptions, and returns all of the
 // user's subscriptions.
-func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
+func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Printf("Error authenticating: %v\n", err)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		return
+		return apiError("Unauthorized.", http.StatusUnauthorized)
 	}
 
 	// Get the subscriptions for this user.
 	subscriptionDetails, err := getSubscriptions(ctx, acct)
 	if err != nil {
-		log.Printf("Error getting subscriptions: %v\n", err)
-		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	// Get the new episodes for this user. We'll grab all episodes from the last 30 days for each
@@ -98,9 +94,7 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 	podcastIDs := make(map[int64]struct{})
 	ne, ip, err := store.GetEpisodesNewAndInProgress(ctx, acct, NewEpisodeDays)
 	if err != nil {
-		log.Printf("Error getting episodes: %v\n", err)
-		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	for _, ep := range ne {
@@ -121,114 +115,82 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) {
 		return newEpisodes[i].PubDate.After(newEpisodes[j].PubDate)
 	})
 
-	err = json.NewEncoder(w).Encode(&subscriptionDetailsList{
+	return json.NewEncoder(w).Encode(&subscriptionDetailsList{
 		Subscriptions: subscriptionDetails,
 		NewEpisodes:   newEpisodes,
 		InProgress:    inProgress,
 	})
-	if err != nil {
-		log.Printf("Error encoding subscriptions: %v\n", err)
-		http.Error(w, "Error encoding subscriptions.", http.StatusInternalServerError)
-		return
-	}
 }
 
 // handleSubscriptionsPost handles a POST to /api/podcasts/{id}/subscriptions, and adds a
 // subscription to the given podcast for the given user.
-func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) {
+func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	vars := mux.Vars(r)
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Printf("Error authenticating: %v\n", err)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		return
+		return apiError("Unauthorized", http.StatusUnauthorized)
 	}
 
 	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
 	if err != nil {
-		log.Printf("Error parsing ID: %s\n", vars["id"])
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
+		return err
 	}
 
-	if err := store.SaveSubscription(ctx, acct, podcastID); err != nil {
-		log.Printf("Error saving subscription: %v\n", err)
-		http.Error(w, "Error saving subscription", http.StatusInternalServerError)
-		return
-	}
+	return store.SaveSubscription(ctx, acct, podcastID)
 }
 
 // handleSubscriptionsDelete handles a DELETE to /api/podcasts/{id}/subscriptions, and removes a
 // subscription from the given podcast for the given user.
-func handleSubscriptionsDelete(w http.ResponseWriter, r *http.Request) {
+func handleSubscriptionsDelete(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	vars := mux.Vars(r)
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Printf("Error authenticating: %v\n", err)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		return
+		return apiError("Unauthorized", http.StatusUnauthorized)
 	}
 
 	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
 	if err != nil {
-		log.Printf("Error parsing ID: %s\n", vars["id"])
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
+		return err
 	}
 
-	err = store.DeleteSubscription(ctx, acct, podcastID)
-	if err != nil {
-		log.Printf("Error deleting subscription: %v\n", err)
-		http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
-		return
-	}
+	return store.DeleteSubscription(ctx, acct, podcastID)
 }
 
 // handleSubscriptionsSync handles a request for /api/subscriptions/sync
-func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) {
+func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
 	var req subscriptionsSyncPostRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		log.Printf("Error parsing request: %v\n", err)
-		http.Error(w, "Error parsing request.", http.StatusBadRequest)
-		return
+		return err
 	}
 	defer r.Body.Close()
 
 	acct, err := authenticate(ctx, r)
 	if err != nil {
-		log.Printf("Error authenticating: %v\n", err)
-		http.Error(w, "Unauthorized.", http.StatusUnauthorized)
-		return
+		return err
 	}
 
 	subscriptionDetails, err := getSubscriptions(ctx, acct)
 	if err != nil {
-		log.Printf("Error getting subscriptions: %v\n", err)
-		http.Error(w, "Unexpected error.", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	// For each podcast, grab the episodes that the client doesn't yet have.
 	for i, sub := range subscriptionDetails {
 		p, err := store.GetPodcast(ctx, sub.Podcast.ID)
 		if err != nil {
-			log.Printf("Error fetching podcast: %v\n", err)
-			http.Error(w, "Error fetching podcast.", http.StatusInternalServerError)
-			return
+			return err
 		}
 
 		p.Episodes, err = store.GetEpisodesForSubscription(ctx, acct, p)
 		if err != nil {
-			log.Printf("Error fetching episodes: %v\n", err)
-			http.Error(w, "Error fetching episodes.", http.StatusInternalServerError)
-			return
+			return err
 		}
 
 		// TODO: don't return episodes they've already got
@@ -236,12 +198,7 @@ func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) {
 	}
 	// TODO: also get the latest positions...
 
-	err = json.NewEncoder(w).Encode(&subscriptionsSyncPostResponse{
+	return json.NewEncoder(w).Encode(&subscriptionsSyncPostResponse{
 		Subscriptions: subscriptionDetails,
 	})
-	if err != nil {
-		log.Printf("Error encoding subscriptions: %v\n", err)
-		http.Error(w, "Error encoding subscriptions.", http.StatusInternalServerError)
-		return
-	}
 }

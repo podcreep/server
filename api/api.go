@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -26,18 +27,50 @@ func authenticate(ctx context.Context, r *http.Request) (*store.Account, error) 
 	return store.LoadAccountByCookie(ctx, auth)
 }
 
+type apierr struct {
+	Err     error
+	Message string
+	Code    int
+}
+
+func (err apierr) Error() string {
+	return fmt.Sprintf("%v [%s] %d", err.Err, err.Message, err.Code)
+}
+
+func apiError(msg string, code int) *apierr {
+	return &apierr{nil, msg, code}
+}
+
+type wrappedRequest func(http.ResponseWriter, *http.Request) error
+
+func wrap(fn wrappedRequest) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := fn(w, r)
+		if err != nil {
+			requestErr, ok := err.(apierr)
+			if !ok {
+				requestErr = apierr{err, err.Error(), 500}
+			}
+			log.Printf("Error in request: %v", requestErr.Error())
+
+			// TODO: hide errors from clients?
+			http.Error(w, requestErr.Message, requestErr.Code)
+		}
+	}
+}
+
 // Setup is called from server.go and sets up our routes, etc.
 func Setup(r *mux.Router) error {
-	r.HandleFunc("/api/accounts", handleAccountsGet).Methods("GET")
-	r.HandleFunc("/api/accounts", handleAccountsPost).Methods("POST")
-	r.HandleFunc("/api/accounts/login", handleAccountsLoginPost).Methods("POST")
-	r.HandleFunc("/api/podcasts", handlePodcastsGet).Methods("GET")
-	r.HandleFunc("/api/podcasts/{id:[0-9]+}", handlePodcastGet).Methods("GET")
-	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions", handleSubscriptionsPost).Methods("POST")
-	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions/{sub:[0-9]+}", handleSubscriptionsDelete).Methods("DELETE")
-	r.HandleFunc("/api/podcasts/{id:[0-9]+}/episodes/{ep:[0-9]+}/playback-state", handlePlaybackStatePut).Methods("PUT")
-	r.HandleFunc("/api/subscriptions", handleSubscriptionsGet).Methods("GET")
-	r.HandleFunc("/api/subscriptions/sync", handleSubscriptionsSync).Methods("POST")
+	r.HandleFunc("/api/accounts", wrap(handleAccountsGet)).Methods("GET")
+	r.HandleFunc("/api/accounts", wrap(handleAccountsPost)).Methods("POST")
+	r.HandleFunc("/api/accounts/login", wrap(handleAccountsLoginPost)).Methods("POST")
+	r.HandleFunc("/api/podcasts", wrap(handlePodcastsGet)).Methods("GET")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}", wrap(handlePodcastGet)).Methods("GET")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions", wrap(handleSubscriptionsPost)).Methods("POST")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions/{sub:[0-9]+}", wrap(handleSubscriptionsDelete)).Methods("DELETE")
+	r.HandleFunc("/api/podcasts/{id:[0-9]+}/episodes/{ep:[0-9]+}/playback-state", wrap(handlePlaybackStatePut)).Methods("PUT")
+	r.HandleFunc("/api/subscriptions", wrap(handleSubscriptionsGet)).Methods("GET")
+	r.HandleFunc("/api/subscriptions/sync", wrap(handleSubscriptionsSync)).Methods("POST")
 
 	return nil
 }
