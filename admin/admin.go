@@ -149,6 +149,7 @@ func Setup(r *mux.Router) error {
 	subr.HandleFunc("/cron/add", wrap(handleCronAdd)).Methods("GET")
 	subr.HandleFunc("/cron/edit", wrap(handleCronEdit)).Methods("GET", "POST")
 	subr.HandleFunc("/cron/{id:[0-9]+}/delete", wrap(handleCronDelete)).Methods("GET", "POST")
+	subr.HandleFunc("/cron/validate-schedule", wrap(handleCronValidateSchedule)).Methods("GET")
 
 	return nil
 }

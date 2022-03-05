@@ -5,11 +5,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/podcreep/server/cron"
 	"github.com/podcreep/server/store"
+	"github.com/podcreep/server/util"
 )
 
 func handleCron(w http.ResponseWriter, r *http.Request) error {
@@ -56,8 +58,19 @@ func handleCronEdit(w http.ResponseWriter, r *http.Request) error {
 		return httpError(fmt.Sprintf("error parsing form: %v", err), http.StatusBadRequest)
 	}
 
+	schedule, err := util.ParseSchedule(cronJob.Schedule)
+	if err != nil {
+		return httpError(fmt.Sprintf("invalid schedule: %v", err), http.StatusBadRequest)
+	}
+	nextRun := schedule.NextTime(time.Now())
+	if cronJob.Enabled {
+		cronJob.NextRun = &nextRun
+	} else {
+		cronJob.NextRun = nil
+	}
+
 	log.Printf("Saving: %v\n", cronJob)
-	err := store.SaveCronJob(r.Context(), cronJob)
+	err = store.SaveCronJob(r.Context(), cronJob)
 	if err != nil {
 		return err
 	}
@@ -92,4 +105,17 @@ func handleCronDelete(w http.ResponseWriter, r *http.Request) error {
 	return render(w, "cron/delete.html", map[string]interface{}{
 		"CronJob": cronJob,
 	})
+}
+
+func handleCronValidateSchedule(w http.ResponseWriter, r *http.Request) error {
+	s, err := util.ParseSchedule(r.URL.Query().Get("schedule"))
+	if err != nil {
+		// We don't return the error because we don't want to go through the normal processing, we are
+		// expected to be called from AJAX.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil
+	}
+
+	fmt.Fprintf(w, "%s", s)
+	return nil
 }
