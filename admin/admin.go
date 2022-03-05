@@ -4,6 +4,7 @@ package admin
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -61,7 +62,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &cookie)
 
-	http.Redirect(w, r, "/admin", 302)
+	redirectUrl := r.URL.Query().Get("from")
+	log.Printf("redirect: %s", redirectUrl)
+	if redirectUrl == "" {
+		log.Print("it's empty")
+		redirectUrl = "/admin"
+	}
+	http.Redirect(w, r, redirectUrl, 302)
 }
 
 // authMiddleware is some middleware that ensures the user is authenticated before allowing them
@@ -74,16 +81,18 @@ func authMiddleware(h http.Handler) http.Handler {
 			return
 		}
 
+		loginUrl := "/admin/login?from=" + url.QueryEscape(r.URL.Path)
+
 		cookie, err := r.Cookie("sess")
 		if err != nil {
 			log.Printf("No cookie, redirecting to login.")
-			http.Redirect(w, r, "/admin/login", 302)
+			http.Redirect(w, r, loginUrl, 302)
 			return
 		}
 
 		if _, ok := sessions[cookie.Value]; !ok {
 			log.Printf("Invalid cookie value, redirecting to login.")
-			http.Redirect(w, r, "/admin/login", 302)
+			http.Redirect(w, r, loginUrl, 302)
 			return
 		}
 
