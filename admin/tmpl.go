@@ -13,18 +13,19 @@ var (
 	templates map[string]*template.Template
 )
 
-func render(w http.ResponseWriter, name string, data interface{}) {
+func render(w http.ResponseWriter, name string, data interface{}) error {
 	tmpl, ok := templates[name]
 	if !ok {
-		http.Error(w, fmt.Sprintf("The template %s does not exist.", name), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("The template %s does not exist.", name)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := tmpl.Execute(w, data)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
 	}
+
+	return nil
 }
 
 func initTemplates() error {

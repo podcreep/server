@@ -2,6 +2,7 @@
 package admin
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -18,38 +19,33 @@ var (
 	sessions = make(map[string]sessionInfo)
 )
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
+func handleHome(w http.ResponseWriter, r *http.Request) error {
 	data := struct {
 	}{}
 
-	render(w, "index.html", data)
+	return render(w, "index.html", data)
 }
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
+func handleLogin(w http.ResponseWriter, r *http.Request) error {
 	if r.Method == "GET" {
-		render(w, "login.html", nil)
-		return
+		return render(w, "login.html", nil)
 	}
 
 	err := r.ParseForm()
 	if err != nil {
-		log.Printf("Error parsing form: %v", err)
-		http.Error(w, "Error parsing form", 400)
-		return
+		return fmt.Errorf("error parsing form: %w", err)
 	}
 
 	password := r.Form.Get("password")
 	if os.Getenv("ADMIN_PASSWORD") == "" || password != os.Getenv("ADMIN_PASSWORD") {
 		log.Printf("Admin password does not match ADMIN_PASSWORD environment variable")
 		http.Error(w, "Invalid password", 400)
-		return
+		return httpError("Password does not match", http.StatusForbidden)
 	}
 
 	cookieValue, err := util.CreateCookie()
 	if err != nil {
-		log.Printf("Error creating cookie: %v", err)
-		http.Error(w, "Error creating cookie", 500)
-		return
+		return fmt.Errorf("error creating cookie: %w", err)
 	}
 
 	sessions[cookieValue] = sessionInfo{}
@@ -69,6 +65,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		redirectUrl = "/admin"
 	}
 	http.Redirect(w, r, redirectUrl, 302)
+	return nil
 }
 
 // authMiddleware is some middleware that ensures the user is authenticated before allowing them
@@ -101,6 +98,36 @@ func authMiddleware(h http.Handler) http.Handler {
 	})
 }
 
+type adminRequestError struct {
+	Err     error
+	Message string
+	Code    int
+}
+
+func (requestErr adminRequestError) Error() string {
+	return fmt.Sprintf("%v [%s] %d", requestErr.Err, requestErr.Message, requestErr.Code)
+}
+
+func httpError(msg string, code int) *adminRequestError {
+	return &adminRequestError{nil, msg, code}
+}
+
+type wrappedRequest func(http.ResponseWriter, *http.Request) error
+
+func wrap(fn wrappedRequest) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := fn(w, r)
+		if err != nil {
+			requestErr, ok := err.(adminRequestError)
+			if !ok {
+				requestErr = adminRequestError{err, err.Error(), 500}
+			}
+			log.Printf("Error in request: %v", requestErr.Error())
+			http.Error(w, requestErr.Message, requestErr.Code)
+		}
+	}
+}
+
 // Setup is called from server.go and sets up our routes, etc.
 func Setup(r *mux.Router) error {
 	if err := initTemplates(); err != nil {
@@ -113,15 +140,15 @@ func Setup(r *mux.Router) error {
 	subr := r.PathPrefix("/admin").Subrouter()
 	subr.Use(authMiddleware)
 
-	subr.HandleFunc("/", handleHome).Methods("GET")
-	subr.HandleFunc("/login", handleLogin).Methods("GET", "POST")
-	subr.HandleFunc("/podcasts", handlePodcastsList).Methods("GET")
-	subr.HandleFunc("/podcasts/add", handlePodcastsAdd).Methods("GET", "POST")
-	subr.HandleFunc("/podcasts/edit", handlePodcastsEditPost).Methods("POST")
-	subr.HandleFunc("/cron", handleCron).Methods("GET")
-	subr.HandleFunc("/cron/add", handleCronAdd).Methods("GET")
-	subr.HandleFunc("/cron/edit", handleCronEdit).Methods("GET", "POST")
-	subr.HandleFunc("/cron/{id:[0-9]+}/delete", handleCronDelete).Methods("GET", "POST")
+	subr.HandleFunc("/", wrap(handleHome)).Methods("GET")
+	subr.HandleFunc("/login", wrap(handleLogin)).Methods("GET", "POST")
+	subr.HandleFunc("/podcasts", wrap(handlePodcastsList)).Methods("GET")
+	subr.HandleFunc("/podcasts/add", wrap(handlePodcastsAdd)).Methods("GET", "POST")
+	subr.HandleFunc("/podcasts/edit", wrap(handlePodcastsEditPost)).Methods("POST")
+	subr.HandleFunc("/cron", wrap(handleCron)).Methods("GET")
+	subr.HandleFunc("/cron/add", wrap(handleCronAdd)).Methods("GET")
+	subr.HandleFunc("/cron/edit", wrap(handleCronEdit)).Methods("GET", "POST")
+	subr.HandleFunc("/cron/{id:[0-9]+}/delete", wrap(handleCronDelete)).Methods("GET", "POST")
 
 	return nil
 }

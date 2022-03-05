@@ -11,25 +11,23 @@ import (
 	"github.com/podcreep/server/store"
 )
 
-func handlePodcastsList(w http.ResponseWriter, r *http.Request) {
+func handlePodcastsList(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
 	log.Printf("loading podcasts...\n")
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
-		log.Printf("error: %v\n", err)
-		// TODO: handle error
+		return err
 	}
 
-	render(w, "podcast/list.html", map[string]interface{}{
+	return render(w, "podcast/list.html", map[string]interface{}{
 		"Podcasts": podcasts,
 	})
 }
 
-func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
+func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	if r.Method == "GET" {
-		render(w, "podcast/add.html", nil)
-		return
+		return render(w, "podcast/add.html", nil)
 	}
 
 	// It's a POST, so first, grab the URL of the RSS feed.
@@ -40,21 +38,17 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 	// Fetch the RSS feed via a HTTP request.
 	resp, err := http.Get(url)
 	if err != nil {
-		// TODO: report error more nicely than this
-		http.Error(w, fmt.Sprintf("Error fetching URL: %s: %v", url, err), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error fetching URL: %s: %v", url, err)
 	}
 	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
 	if resp.StatusCode != 200 {
-		http.Error(w, fmt.Sprintf("Error fetching URL: %s status=%d", url, resp.StatusCode), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error fetching URL: %s status=%d", url, resp.StatusCode)
 	}
 
 	// Unmarshal the RSS feed into an object we can query.
 	var feed rss.Feed
 	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		http.Error(w, fmt.Sprintf("Error unmarshalling response: %v", err), http.StatusInternalServerError)
-		return
+		return fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
 	podcast := store.Podcast{
@@ -64,15 +58,15 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) {
 		FeedURL:     feed.Channel.Link.Href,
 	}
 
-	render(w, "podcast/edit.html", map[string]interface{}{
+	return render(w, "podcast/edit.html", map[string]interface{}{
 		"Podcast": podcast,
 	})
 }
 
-func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
+func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
-		// TODO: handle error
+		return httpError(fmt.Sprintf("error parsing form: %v", err), http.StatusBadRequest)
 	}
 
 	var podcast *store.Podcast
@@ -84,19 +78,17 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := schema.NewDecoder().Decode(podcast, r.PostForm); err != nil {
-		// TODO: handle error
+		return httpError(fmt.Sprintf("error decoding form: %v", err), http.StatusBadRequest)
 	}
 
 	log.Printf("Saving: %v\n", podcast)
 	id, err := store.SavePodcast(ctx, podcast)
 	if err != nil {
-		log.Printf("Error saving podcast: %v", err)
-		http.Error(w, "Error saving podcast", 500)
-		return
+		return err
 	}
 	podcast.ID = id
 
-	render(w, "podcast/edit.html", map[string]interface{}{
+	return render(w, "podcast/edit.html", map[string]interface{}{
 		"Podcast": podcast,
 	})
 }
