@@ -20,11 +20,10 @@ var (
 	Jobs map[string]func(context.Context) error
 )
 
-// cronCheckUpdates checks for updates to our podcasts. We only do one podcast per call to this
-// method, so it should be called relatively frequenctly.
-//
-// To decide which podcast to update, we look at how long it has been since the last update: we
-// pick the podcast with the oldest update, as long as it's been more than one hour.
+// cronCheckUpdates checks for updates to our podcasts. To decide which podcast to update, we look
+// at how long it has been since the last update: we update all podcasts that have not been updated
+// in at last the last hour.
+// TODO: allow us to configure the refresh frequency on a per-podcast basis.
 func cronCheckUpdates(ctx context.Context) error {
 	podcasts, err := store.LoadPodcasts(ctx)
 	if err != nil {
@@ -42,18 +41,21 @@ func cronCheckUpdates(ctx context.Context) error {
 		return podcasts[i].LastFetchTime.Before(podcasts[j].LastFetchTime)
 	})
 
-	p := podcasts[0]
-	if p.LastFetchTime.After(time.Now().Add(-1 * time.Hour)) {
-		log.Printf("Oldest podcast ('%s') was only updated at %v, not updating again.", p.Title, p.LastFetchTime)
-		return nil
-	}
+	// Loop through all the podcasts, and stop when we get one that was updated in the last
+	// hour.
+	for _, p := range podcasts {
+		if p.LastFetchTime.After(time.Now().Add(-1 * time.Hour)) {
+			log.Printf("This podcast ('%s') was only updated at %v, not updating again.", p.Title, p.LastFetchTime)
+			return nil
+		}
 
-	log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
-	numUpdated, err := updatePodcast(ctx, p, false)
-	if err != nil {
-		return fmt.Errorf("Error updating podcast: %w", err)
+		log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
+		numUpdated, err := updatePodcast(ctx, p, false)
+		if err != nil {
+			return fmt.Errorf("Error updating podcast: %w", err)
+		}
+		log.Printf(" - updated %d episodes", numUpdated)
 	}
-	log.Printf(" - updated %d episodes", numUpdated)
 	return nil
 }
 

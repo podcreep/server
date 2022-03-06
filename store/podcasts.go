@@ -79,10 +79,16 @@ type EpisodeProgress struct {
 
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
-	sql := "INSERT INTO podcasts (title, description, image_url, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5) RETURNING id"
-	row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, time.Time{})
-	err := row.Scan(&p.ID)
-	return p.ID, err
+	if p.ID == 0 {
+		sql := "INSERT INTO podcasts (title, description, image_url, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5) RETURNING id"
+		row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, time.Time{})
+		err := row.Scan(&p.ID)
+		return p.ID, err
+	} else {
+		sql := "UPDATE podcasts SET title=$1, description=$2, image_url=$3, feed_url=$4, last_fetch_time=$5 WHERE id=$6"
+		_, err := conn.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, p.LastFetchTime, p.ID)
+		return p.ID, err
+	}
 }
 
 // SaveEpisode saves the given episode to the data store.
