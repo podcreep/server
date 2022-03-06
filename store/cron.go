@@ -52,14 +52,14 @@ func LoadCrobJob(ctx context.Context, id int64) (*CronJob, error) {
 	return nil, fmt.Errorf("No such cron job: %d", id)
 }
 
-// Gets the time we need to wait until the next cron job. Maximum duration is 10 minutes.
+// Gets the time we need to wait until the next cron job. Maximum duration is 30 minutes.
 func GetTimeToNextCronJob(ctx context.Context, now time.Time) time.Duration {
-	sql := "SELECT MIN next_run FROM cron"
+	sql := "SELECT MIN(next_run) FROM cron"
 	row := conn.QueryRow(ctx, sql)
 	var nextRunTime *time.Time
 	err := row.Scan(&nextRunTime)
 	if err != nil || nextRunTime == nil {
-		return 5 * time.Minute
+		return 30 * time.Minute
 	}
 
 	// Return the amount of time we have to wait, not less than a second.

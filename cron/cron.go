@@ -136,7 +136,7 @@ func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int
 	return numUpdated, error
 }
 
-func runJob(ctx context.Context, now time.Time, job *store.CronJob) error {
+func RunCronJob(ctx context.Context, now time.Time, job *store.CronJob) error {
 	found := false
 	for n, fn := range Jobs {
 		if n == job.Name {
@@ -175,7 +175,7 @@ func cronIterate() error {
 	}
 
 	for _, job := range jobs {
-		err := runJob(ctx, now, job)
+		err := RunCronJob(ctx, now, job)
 		if err != nil {
 			return err
 		} else {

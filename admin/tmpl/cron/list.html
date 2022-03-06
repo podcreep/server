@@ -22,9 +22,25 @@
       <td>{{$j.Schedule}}</td>
       <td>{{$j.Enabled}}</td>
       <td>{{$j.NextRun}}</td>
-      <td><a href="">Edit</a> &bull; <a href="/admin/cron/{{$j.ID}}/delete">Delete</a></td>
+      <td>
+        <a id="run-now" href="/admin/cron/{{$j.ID}}/run-now">Run now</a> &bull;
+        <a href="">Edit</a> &bull;
+        <a href="/admin/cron/{{$j.ID}}/delete">Delete</a>
+      </td>
     </tr>
   {{end}}
   </table>
   <a href="/admin/cron/add">Add</a>
+  <script>
+    $("#run-now").on("click", function(event) {
+      $.ajax({
+        "url": $(this).attr("href"),
+        "method": "POST",
+        "success": function() {
+          this.location.reload();
+        }
+      });
+      event.preventDefault();
+    });
+  </script>
 {{end}}

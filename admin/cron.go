@@ -107,6 +107,23 @@ func handleCronDelete(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
+func handleCronRunNow(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	cronID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return httpError(err.Error(), http.StatusBadRequest)
+	}
+
+	cronJob, err := store.LoadCrobJob(ctx, cronID)
+	if err != nil {
+		return err
+	}
+
+	return cron.RunCronJob(ctx, time.Now(), cronJob)
+}
+
 func handleCronValidateSchedule(w http.ResponseWriter, r *http.Request) error {
 	s, err := util.ParseSchedule(r.URL.Query().Get("schedule"))
 	if err != nil {
