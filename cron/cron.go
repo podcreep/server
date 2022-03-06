@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
+	"github.com/podcreep/server/util"
 )
 
 var (
@@ -133,6 +134,78 @@ func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int
 	return numUpdated, error
 }
 
+func runJob(ctx context.Context, now time.Time, job *store.CronJob) error {
+	found := false
+	for n, fn := range Jobs {
+		if n == job.Name {
+			found = true
+
+			err := fn(ctx)
+			if err != nil {
+				return fmt.Errorf("Error running job: %v", err)
+			}
+		}
+	}
+
+	if !found {
+		job.Enabled = false
+		return fmt.Errorf("Job does not exist: %s", job.Name)
+	}
+
+	sched, err := util.ParseSchedule(job.Schedule)
+	if err != nil {
+		job.Enabled = false
+		return fmt.Errorf("Job has invalid schedule, cannot reschedule: %w", err)
+	}
+	nextRun := sched.NextTime(now)
+	job.NextRun = &nextRun
+	return nil
+}
+
+// cronIterate is run in a goroutine to actually execute the cron tasks.
+func cronIterate() error {
+	ctx := context.Background()
+
+	now := time.Now()
+	jobs, err := store.LoadPendingCronJobs(ctx, now)
+	if err != nil {
+		return err
+	}
+
+	for _, job := range jobs {
+		err := runJob(ctx, now, job)
+		if err != nil {
+			return err
+		} else {
+			err := store.SaveCronJob(ctx, job)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// runCronIterate is a helper that runs cronIterate and then schedules itself to run again.
+func runCronIterate() {
+	ctx := context.Background()
+	now := time.Now()
+	timeToWait := store.GetTimeToNextCronJob(ctx, now)
+
+	log.Printf("Waiting %v to next cron job", timeToWait)
+	time.Sleep(timeToWait)
+
+	err := cronIterate()
+	if err != nil {
+		log.Printf("Error running cronIterate: %v", err)
+		// Keep going, schedule again.
+	}
+
+	// Schedule to run again.
+	go runCronIterate()
+}
+
 // Gets a list of the cron job names.
 func GetCronJobNames() []string {
 	var names []string
@@ -148,6 +221,9 @@ func Setup(r *mux.Router) error {
 	Jobs["check-updates"] = cronCheckUpdates
 	//	r.HandleFunc("/cron/force-update/{id:[0-9]+}", handleCronForceUpdate).Methods("GET")
 	//	r.HandleFunc("/cron/clear-episodes/{id:[0-9]+}", handleClearEpisodes).Methods("GET")
+
+	// Run the cron goroutine start away.
+	go runCronIterate()
 
 	return nil
 }

@@ -52,6 +52,45 @@ func LoadCrobJob(ctx context.Context, id int64) (*CronJob, error) {
 	return nil, fmt.Errorf("No such cron job: %d", id)
 }
 
+// Gets the time we need to wait until the next cron job. Maximum duration is 10 minutes.
+func GetTimeToNextCronJob(ctx context.Context, now time.Time) time.Duration {
+	sql := "SELECT MIN next_run FROM cron"
+	row := conn.QueryRow(ctx, sql)
+	var nextRunTime *time.Time
+	err := row.Scan(&nextRunTime)
+	if err != nil || nextRunTime == nil {
+		return 5 * time.Minute
+	}
+
+	// Return the amount of time we have to wait, not less than a second.
+	duration := nextRunTime.Sub(now)
+	if duration < time.Second {
+		duration = time.Second
+	}
+	return duration
+}
+
+// LoadPendingCronJobs all the cron jobs that are currently scheduled to run now.
+func LoadPendingCronJobs(ctx context.Context, now time.Time) ([]*CronJob, error) {
+	sql := "SELECT id, job_name, schedule, enabled, next_run FROM cron WHERE next_run < $1"
+	rows, err := conn.Query(ctx, sql, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []*CronJob
+	for rows.Next() {
+		job := CronJob{}
+		if err := rows.Scan(&job.ID, &job.Name, &job.Schedule, &job.Enabled, &job.NextRun); err != nil {
+			return nil, fmt.Errorf("Error scanning row: %w", err)
+		}
+		jobs = append(jobs, &job)
+	}
+
+	return jobs, nil
+}
+
 // DeleteCronJob deletes the given cron job from the database.
 func DeleteCronJob(ctx context.Context, id int64) error {
 	sql := "DELETE FROM cron WHERE id = $1"
