@@ -37,8 +37,8 @@ func (err apierr) Error() string {
 	return fmt.Sprintf("%v [%s] %d", err.Err, err.Message, err.Code)
 }
 
-func apiError(msg string, code int) *apierr {
-	return &apierr{nil, msg, code}
+func apiError(msg string, code int) apierr {
+	return apierr{nil, msg, code}
 }
 
 type wrappedRequest func(http.ResponseWriter, *http.Request) error

@@ -4,12 +4,14 @@ import os
 import platform
 import shutil
 import subprocess
+import zipfile
 
 parser = argparse.ArgumentParser(description='Run the podcreep server locally.')
 parser.add_argument('--web_path', type=str, default='../web', help='Path where the web app is checked out to.')
 parser.add_argument('--server_path', type=str, default='.', help='Path where the server code is checked out to.')
 parser.add_argument('--android_path', type=str, default='../android', help='Path where the Android app\'s code is checked out to.')
 parser.add_argument('--deploy_path', type=str, default='../dist', help='Path where we build and deploy the server to, temporarily.')
+parser.add_argument('--server_dest', type=str, required=True, help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
 args = parser.parse_args()
 
 web_path = os.path.abspath(args.web_path)
@@ -58,15 +60,13 @@ def copy_web():
 def build_server():
   print(" - building server")
 
-  subprocess.run("go build", cwd=server_path, check=True, shell=True)
+  env = os.environ
+  env["GOOS"] = "linux"
+  subprocess.run("go build", cwd=server_path, check=True, shell=True, env=env)
 
 
 def copy_server():
   print(" - copying server")
-
-  exe_name = "server"
-  if platform.system() == "Windows":
-    exe_name += ".exe"
 
   server_deploy_path = os.path.join(deploy_path, "server")
   if os.path.isdir(server_deploy_path):
@@ -74,7 +74,7 @@ def copy_server():
     shutil.rmtree(server_deploy_path)
 
   os.makedirs(server_deploy_path)
-  shutil.move(os.path.join(server_path, exe_name), server_deploy_path)
+  shutil.move(os.path.join(server_path, "server"), os.path.join(server_deploy_path, "podcreep"))
   for root, _, files in os.walk(server_path):
     for f in files:
       rel_dir = os.path.relpath(root, server_path)
@@ -125,19 +125,31 @@ def copy_android():
   shutil.copy(ANDROID_AAB_PATH, os.path.join(dest_dir, dest_file))
 
 
-def main():
-  print("Web code:", web_path)
-  print("Android code:", android_path)
-  print("Server code:", server_path)
-  print("Deploy path:", deploy_path)
-  input("Press Enter to begin.")
+def zip_server():
+  print(" - zipping server")
+  with zipfile.ZipFile(os.path.join(deploy_path, "server.zip"), "w") as server_zip:
+    server_deploy_path = os.path.join(deploy_path, "server")
+    for root, _, files in os.walk(server_deploy_path):
+      for f in files:
+        full_path = os.path.join(root, f)
+        zip_path = os.path.relpath(full_path, server_deploy_path)
+        server_zip.write(full_path, zip_path)
 
+
+def deploy_server():
+  print(" - deploying server")
+  subprocess.run(["scp", os.path.join(deploy_path, "server.zip"), args.server_dest])
+
+
+def main():
   build_web()
   copy_web()
   build_server()
   copy_server()
   build_android()
   copy_android()
+  zip_server()
+  deploy_server()
 
 
 if __name__ == "__main__":

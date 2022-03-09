@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,7 @@ func initTemplates() error {
 	}
 
 	templates = make(map[string]*template.Template)
-	return filepath.Walk("admin/tmpl/", func(path string, info fs.FileInfo, err error) error {
+	err = filepath.Walk("admin/tmpl/", func(path string, info fs.FileInfo, err error) error {
 		if strings.HasPrefix(filepath.Base(path), "_") {
 			return nil
 		}
@@ -62,4 +63,10 @@ func initTemplates() error {
 		templates[name] = template.Must(tmpl.ParseFiles(files...))
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Loaded %d admin templates", len(templates))
+	return nil
 }
