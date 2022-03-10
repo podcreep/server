@@ -11,12 +11,15 @@ parser.add_argument('--web_path', type=str, default='../web', help='Path where t
 parser.add_argument('--server_path', type=str, default='.', help='Path where the server code is checked out to.')
 parser.add_argument('--android_path', type=str, default='../android', help='Path where the Android app\'s code is checked out to.')
 parser.add_argument('--deploy_path', type=str, default='../dist', help='Path where we build and deploy the server to, temporarily.')
+parser.add_argument('--keystore_path', type=str, default='../keystore.jks', help='Path to the keystore path.')
+parser.add_argument('--keystore_pass', type=str, default='', help='Password for the keystore.')
 parser.add_argument('--server_dest', type=str, required=True, help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
 args = parser.parse_args()
 
 web_path = os.path.abspath(args.web_path)
 server_path = os.path.abspath(args.server_path)
 android_path = os.path.abspath(args.android_path)
+keystore_path = os.path.abspath(args.keystore_path)
 deploy_path = os.path.abspath(args.deploy_path)
 
 # In addition to .go and .py source files, which we ignore when creating the server dist folder,
@@ -105,6 +108,13 @@ def build_android():
   subprocess.run([os.path.join(".", "gradlew"), "bundle"], cwd=android_path, check=True, shell=True)
 
 
+def sign_android():
+  print(" - signing android app")
+  subprocess.run([
+      "jarsigner", "-verbose", "-sigalg", "SHA256withRSA", "-digestalg", "SHA-256",
+      "-keystore", keystore_path, ANDROID_AAB_PATH, "Codeka", "-storepass", args.keystore_pass])
+
+
 def get_app_version():
   bundletool_path = os.path.join(android_path, "bundletool-all-1.8.2.jar")
   proc = subprocess.run([
@@ -147,6 +157,7 @@ def main():
   build_server()
   copy_server()
   build_android()
+  sign_android()
   copy_android()
   zip_server()
   deploy_server()
