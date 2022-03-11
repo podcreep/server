@@ -3,11 +3,8 @@ package cron
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -57,62 +54,6 @@ func cronCheckUpdates(ctx context.Context) error {
 		log.Printf(" - updated %d episodes", numUpdated)
 	}
 	return nil
-}
-
-// handleCronForceUpdate does a "force" update on a podcast, including re-downloading and storing
-// all episodes. This is useful if we change our parsing or storing logic or something and we need
-// to refresh the whole thing.
-func handleCronForceUpdate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-
-	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
-	if err != nil {
-		log.Printf("Error parsing ID: %s\n", vars["id"])
-		io.WriteString(w, fmt.Sprintf("Error parsing ID: %s\n", vars["id"]))
-		return
-	}
-
-	p, err := store.GetPodcast(ctx, podcastID)
-	if err != nil {
-		log.Printf("Error fetching podcast: %v", err)
-		io.WriteString(w, fmt.Sprintf("Error fetching podcast: %v", err))
-		return
-	}
-
-	p.Episodes, err = store.LoadEpisodes(ctx, p.ID, 20)
-	if err != nil {
-		log.Printf("Error fetching recent episodes: %v", err)
-		io.WriteString(w, fmt.Sprintf("Error fetching episodes: %v", err))
-	}
-
-	numUpdated, err := updatePodcast(ctx, p, true)
-	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Error updating podcast: %v", err))
-	} else {
-		io.WriteString(w, fmt.Sprintf("Updated: %s (%d episodes)", p.Title, numUpdated))
-	}
-}
-
-// handleClearEpisodes clears all of the episodes for a podcast. This is mostly just used for
-// debugging/testing.
-func handleClearEpisodes(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-
-	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
-	if err != nil {
-		log.Printf("Error parsing ID: %s", vars["id"])
-		io.WriteString(w, fmt.Sprintf("Error parsing ID: %s", vars["id"]))
-		return
-	}
-
-	err = store.ClearEpisodes(ctx, podcastID)
-	if err != nil {
-		log.Printf("Error clearing episodes: %v", err)
-		io.WriteString(w, fmt.Sprintf("Error clearing episodes: %v", err))
-		return
-	}
 }
 
 func updatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int, error) {
@@ -221,8 +162,6 @@ func GetCronJobNames() []string {
 func Setup(r *mux.Router) error {
 	Jobs = make(map[string]func(context.Context) error)
 	Jobs["check-updates"] = cronCheckUpdates
-	//	r.HandleFunc("/cron/force-update/{id:[0-9]+}", handleCronForceUpdate).Methods("GET")
-	//	r.HandleFunc("/cron/clear-episodes/{id:[0-9]+}", handleClearEpisodes).Methods("GET")
 
 	// Run the cron goroutine start away.
 	go runCronIterate()

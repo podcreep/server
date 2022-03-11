@@ -244,62 +244,6 @@ func GetEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int
 	return episodes, inProgress, nil
 }
 
-// GetEpisodesBetween gets all episodes between the two given dates.
-func GetEpisodesBetween(ctx context.Context, p *Podcast, start, end time.Time) ([]*Episode, error) {
-	var episodes []*Episode
-
-	//key := datastore.IDKey("podcast", p.ID, nil)
-	//q := datastore.NewQuery("episode").Ancestor(key).Filter("PubDate >=", start).Filter("PubDate <=", end).Order("-PubDate")
-	//for t := ds.Run(ctx, q); ; {
-	//	var ep Episode
-	//	key, err := t.Next(&ep)
-	//	if err == iterator.Done {
-	//		break
-	//	} else if err != nil {
-	//		return nil, err
-	//	}
-	//	ep.ID = key.ID
-	//	episodes = append(episodes, &ep)
-	//}
-
-	return episodes, nil
-}
-
-// ClearEpisodes removes all episodes for the given podcast.
-func ClearEpisodes(ctx context.Context, podcastID int64) error {
-	//for {
-	//	// Fetch in batches of 1000
-	//	key := datastore.IDKey("podcast", podcastID, nil)
-	//	q := datastore.NewQuery("episode").Ancestor(key).KeysOnly().Limit(1000)
-	//	keys, err := ds.GetAll(ctx, q, nil)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	if len(keys) == 0 {
-	//		return nil
-	//	}
-	//	log.Printf("Got %d episodes to delete (first one: %s)", len(keys), keys[0])
-
-	//	if len(keys) < 100 {
-	//		err = ds.DeleteMulti(ctx, keys)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		return nil
-	//	}
-
-	//	// And delete in batches of 100.
-	//	for i := 0; i < len(keys); i += 100 {
-	//		err = ds.DeleteMulti(ctx, keys[i:i+100])
-	//		if err != nil {
-	//			return err
-	//		}
-	//		log.Printf("Deleted 100 episodes")
-	//	}
-	//}
-	return nil
-}
-
 func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 	var podcasts []*Podcast
 	for rows.Next() {
