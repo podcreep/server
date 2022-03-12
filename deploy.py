@@ -1,9 +1,9 @@
 
 import argparse
 import os
-import platform
 import shutil
 import subprocess
+from xmlrpc.client import Boolean
 import zipfile
 
 parser = argparse.ArgumentParser(description='Run the podcreep server locally.')
@@ -14,6 +14,8 @@ parser.add_argument('--deploy_path', type=str, default='../dist', help='Path whe
 parser.add_argument('--keystore_path', type=str, default='../keystore.jks', help='Path to the keystore path.')
 parser.add_argument('--keystore_pass', type=str, default='', help='Password for the keystore.')
 parser.add_argument('--server_dest', type=str, required=True, help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
+parser.add_argument('--build_android', action=argparse.BooleanOptionalAction, default=True, help='Build the android app.')
+parser.add_argument('--build_server', action=argparse.BooleanOptionalAction, default=True, help='Build (and deploy) the server.')
 args = parser.parse_args()
 
 web_path = os.path.abspath(args.web_path)
@@ -100,6 +102,42 @@ def copy_server():
       shutil.copy(os.path.join(root, f), dest_dir)
 
 
+def zip_server():
+  print(" - zipping server")
+  with zipfile.ZipFile(os.path.join(deploy_path, "server.zip"), "w") as server_zip:
+    server_deploy_path = os.path.join(deploy_path, "server")
+    for root, _, files in os.walk(server_deploy_path):
+      for f in files:
+        full_path = os.path.join(root, f)
+        zip_path = os.path.relpath(full_path, server_deploy_path)
+        server_zip.write(full_path, zip_path)
+
+
+def deploy_server():
+  print(" - deploying server")
+  subprocess.run(["scp", os.path.join(deploy_path, "server.zip"), args.server_dest])
+
+
+def update_android_version():
+  print(" - updating android version")
+  with open(os.path.join(android_path, "gradle.properties"), "r") as f:
+    lines = f.readlines()
+  with open(os.path.join(android_path, "gradle.properties"), "w") as f:
+    for line in lines:
+      if line.startswith("app.versionCode"):
+        parts = line.split("=")
+        newVersionCode = str(int(parts[1]) + 1)
+        print("   app.versionCode=" + newVersionCode)
+        line = "app.versionCode=" + newVersionCode + "\n"
+      elif line.startswith("app.versionName"):
+        parts = line.split("=")
+        versionParts = parts[1].split(".")
+        newVersion = versionParts[0] + "." + versionParts[1] + "." + str(int(versionParts[2]) + 1)
+        print("   app.versionName=" + newVersion)
+        line = "app.versionName=" + newVersion + "\n"
+      f.write(line)
+
+
 def build_android():
   print(" - building android")
   print("   - clean")
@@ -135,32 +173,22 @@ def copy_android():
   shutil.copy(ANDROID_AAB_PATH, os.path.join(dest_dir, dest_file))
 
 
-def zip_server():
-  print(" - zipping server")
-  with zipfile.ZipFile(os.path.join(deploy_path, "server.zip"), "w") as server_zip:
-    server_deploy_path = os.path.join(deploy_path, "server")
-    for root, _, files in os.walk(server_deploy_path):
-      for f in files:
-        full_path = os.path.join(root, f)
-        zip_path = os.path.relpath(full_path, server_deploy_path)
-        server_zip.write(full_path, zip_path)
-
-
-def deploy_server():
-  print(" - deploying server")
-  subprocess.run(["scp", os.path.join(deploy_path, "server.zip"), args.server_dest])
-
-
 def main():
-  build_web()
-  copy_web()
-  build_server()
-  copy_server()
-  build_android()
-  sign_android()
-  copy_android()
-  zip_server()
-  deploy_server()
+  # TODO: probably we can do both the android build and server build at the same time in separate
+  # threads. They don't really touch on each other in any way.
+  if args.build_server:
+    build_web()
+    copy_web()
+    build_server()
+    copy_server()
+    zip_server()
+    deploy_server()
+
+  if args.build_android:
+    update_android_version()
+    build_android()
+    sign_android()
+    copy_android()
 
 
 if __name__ == "__main__":
