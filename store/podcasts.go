@@ -28,6 +28,10 @@ type Podcast struct {
 	// The URL of the title image for the podcast.
 	ImageURL string `json:"imageUrl"`
 
+	// The path on disk to the file where we have the image for this podcast saved. This will be
+	// null before we've fetched the image.
+	ImagePath *string `json:"-"`
+
 	// The URL of the podcast's RSS feed.
 	FeedURL string `json:"feedUrl"`
 
@@ -80,13 +84,13 @@ type EpisodeProgress struct {
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if p.ID == 0 {
-		sql := "INSERT INTO podcasts (title, description, image_url, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5) RETURNING id"
-		row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, time.Time{})
+		sql := "INSERT INTO podcasts (title, description, image_url, image_path, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
+		row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
 		err := row.Scan(&p.ID)
 		return p.ID, err
 	} else {
-		sql := "UPDATE podcasts SET title=$1, description=$2, image_url=$3, feed_url=$4, last_fetch_time=$5 WHERE id=$6"
-		_, err := conn.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.FeedURL, p.LastFetchTime, p.ID)
+		sql := "UPDATE podcasts SET title=$1, description=$2, image_url=$3, image_path=$4, feed_url=$5, last_fetch_time=$6 WHERE id=$7"
+		_, err := conn.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
 		return p.ID, err
 	}
 }
@@ -113,19 +117,19 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 	return nil
 }
 
-// GetPodcast returns the podcast with the given ID.
-func GetPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
+// LoadPodcast returns the podcast with the given ID.
+func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
-	sql := "SELECT id, title, description, image_url, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
+	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
 	row := conn.QueryRow(ctx, sql, podcastID)
-	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 		return nil, fmt.Errorf("Error scanning row: %w", err)
 	}
 	return podcast, nil
 }
 
-// GetEpisode gets the episode with the given ID for the given podcast.
-func GetEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, error) {
+// LoadEpisode gets the episode with the given ID for the given podcast.
+func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, error) {
 	sql := `SELECT
 			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
 		FROM episodes
@@ -167,7 +171,6 @@ func populateEpisodes(rows pgx.Rows) ([]*Episode, error) {
 
 // LoadEpisodes loads all episodes for the given podcast, up to the given limit. If limit is < 0
 // then loads all episodes.
-// TODO: rename this GetEpisodes
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	sql := `SELECT
 	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
@@ -186,9 +189,9 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 	return populateEpisodes(rows)
 }
 
-// GetEpisodesForSubscription gets the episodes to display for the given subscribed account. We'll
+// LoadEpisodesForSubscription gets the episodes to display for the given subscribed account. We'll
 // return all episodes that the account has not finished listening to.
-func GetEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
+func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
 
 	// TODO: check episode_progress
 
@@ -206,12 +209,12 @@ func GetEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) 
 	return populateEpisodes(rows)
 }
 
-// GetEpisodesNewAndInProgress gets the new and in-progress episodes for the given account. In this
+// LoadEpisodesNewAndInProgress gets the new and in-progress episodes for the given account. In this
 // case, new episodes are ones that don't have any progress at all (and only from the last numDays
 // days). And of course, in-progress ones are ones that have progress but are not yet
 // marked done. For in-progress episode, we don't just limit them to the last numDays days, we will
 // return them all.
-func GetEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*InProgressEpisode, err error) {
+func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*InProgressEpisode, err error) {
 	sql := `
 		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
 		       pub_date, media_url, (CASE WHEN position_secs IS NULL THEN 0 ELSE position_secs END)
@@ -248,7 +251,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 	var podcasts []*Podcast
 	for rows.Next() {
 		var podcast Podcast
-		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 			return nil, fmt.Errorf("Error scanning podcast: %w", err)
 		}
 
@@ -261,7 +264,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	sql := "SELECT id, title, description, image_url, feed_url, last_fetch_time FROM podcasts"
+	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts"
 	rows, err := conn.Query(ctx, sql)
 	if err != nil {
 		return nil, fmt.Errorf("Error querying podcasts: %w", err)

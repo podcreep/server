@@ -92,7 +92,7 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) error {
 	var newEpisodes []*episodeDetails
 	var inProgress []*episodeDetails
 	podcastIDs := make(map[int64]struct{})
-	ne, ip, err := store.GetEpisodesNewAndInProgress(ctx, acct, NewEpisodeDays)
+	ne, ip, err := store.LoadEpisodesNewAndInProgress(ctx, acct, NewEpisodeDays)
 	if err != nil {
 		return err
 	}
@@ -183,12 +183,12 @@ func handleSubscriptionsSync(w http.ResponseWriter, r *http.Request) error {
 
 	// For each podcast, grab the episodes that the client doesn't yet have.
 	for i, sub := range subscriptionDetails {
-		p, err := store.GetPodcast(ctx, sub.Podcast.ID)
+		p, err := store.LoadPodcast(ctx, sub.Podcast.ID)
 		if err != nil {
 			return err
 		}
 
-		p.Episodes, err = store.GetEpisodesForSubscription(ctx, acct, p)
+		p.Episodes, err = store.LoadEpisodesForSubscription(ctx, acct, p)
 		if err != nil {
 			return err
 		}

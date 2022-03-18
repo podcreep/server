@@ -70,7 +70,7 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	p, err := store.GetPodcast(ctx, podcastID)
+	p, err := store.LoadPodcast(ctx, podcastID)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) error {
 		details.IsSubscribed = true
 
 		// If they're subscribed, get the episode list for this subscription.
-		details.Episodes, err = store.GetEpisodesForSubscription(ctx, acct, p)
+		details.Episodes, err = store.LoadEpisodesForSubscription(ctx, acct, p)
 		if err != nil {
 			return err
 		}

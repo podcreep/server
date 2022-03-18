@@ -2,11 +2,15 @@ package rss
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +22,18 @@ import (
 var (
 	// An empty policy will strip all HTML tags, which is what we actually want.
 	htmlPolicy = bluemonday.NewPolicy()
+
+	// http.Client we'll use to make HTTP requests.
+	httpClient = &http.Client{}
 )
+
+// maybeAddIfModifiedSince will add an If-Modified-Since header to the given request, based on the
+// last fetch time of the given podcast.
+func maybeAddIfModifiedSince(req *http.Request, p *store.Podcast) {
+	if !p.LastFetchTime.IsZero() && len(p.Episodes) > 0 {
+		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
+	}
+}
 
 func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 	pubDate, err := parsePubDate(item.PubDate)
@@ -56,6 +71,78 @@ func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 	return nil
 }
 
+func calculateSha1(filepath string) (string, error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func updateChannel(ctx context.Context, channel Channel, p *store.Podcast) error {
+	// Note: we do not update the channel title or description, as these can be edited by the admin.
+	// But we do want to check if the image URL has changed.
+	// TODO: remember if they customized it and don't modify it.
+
+	url := channel.Image.URL
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	maybeAddIfModifiedSince(req, p)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// Note: We'll ignore errors here, if anything goes wrong, we just ignore this update. Hopefully
+		// next time it'll work. Some errors we don't ignore, but stuff like this one would most likely
+		// just be a HTTP error on the server or something.
+		log.Printf("Error fetching podcast URL: %s %v", url, err)
+		// TODO: if we do more than update the icon, we'll want to add this to a helper function.
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 304 {
+		log.Printf("Image hasn't been updated, no need to fetch again.")
+	} else {
+		file, err := ioutil.TempFile("", "icon")
+		if err != nil {
+			return fmt.Errorf("Error creating a temporary file: %w", err)
+		}
+		defer os.Remove(file.Name())
+
+		_, err = io.Copy(file, resp.Body)
+		if err != nil {
+			return fmt.Errorf("Error saving image: %w", err)
+		}
+
+		newSha1, err := calculateSha1(file.Name())
+		log.Printf("New image SHA1: %s", newSha1)
+
+		oldSha1 := ""
+		if p.ImagePath != nil {
+			oldSha1, err = calculateSha1(*p.ImagePath)
+			if err != nil {
+				return fmt.Errorf("Error calculating SHA1: %w", err)
+			}
+		}
+
+		if oldSha1 != newSha1 {
+			log.Printf("SHA mismatch: %s != %s", newSha1, oldSha1)
+
+		}
+	}
+
+	return nil
+}
+
 // UpdatePodcast fetches the feed URL for the given podcast, parses it and updates all of the
 // episodes we have stored for the podcast. This method updates the passed-in store.Podcast with
 // the latest details.
@@ -77,13 +164,11 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 		log.Printf(" - error creating RSS request: %v", err)
 		return 0, err
 	}
-
-	if !p.LastFetchTime.IsZero() && !force && len(p.Episodes) > 0 {
-		req.Header.Set("If-Modified-Since", p.LastFetchTime.UTC().Format(time.RFC1123))
+	if !force {
+		maybeAddIfModifiedSince(req, p)
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("error fetching URL: %s: %v", p.FeedURL, err)
 	}
@@ -94,11 +179,6 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 	}
 	if resp.StatusCode != 200 {
 		return 0, fmt.Errorf("error fetching URL: %s status=%d", p.FeedURL, resp.StatusCode)
-	}
-
-	// No episodes, so we do the same as if you'd specified force=true -- download everything
-	if len(p.Episodes) == 0 {
-		force = true
 	}
 
 	// Unmarshal the RSS feed, loading epsiodes as we go. We are extremely forgiving on the XML
@@ -125,15 +205,23 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 			if se.Name.Local == "item" {
 				err := decoder.DecodeElement(&item, &se)
 				if err != nil {
-					log.Printf("Error parsing item: %v", err)
-					return 0, err
+					return 0, fmt.Errorf("Error parsing item: %w", err)
 				}
 
 				if err := updateEpisode(ctx, item, p); err != nil {
-					log.Printf("Error updating item: %v", err)
-					return numUpdated, err
+					return numUpdated, fmt.Errorf("Error updating item: %w", err)
 				}
 				numUpdated++
+			} else if se.Name.Local == "channel" {
+				var channel Channel
+				err := decoder.DecodeElement(&channel, &se)
+				if err != nil {
+					return 0, fmt.Errorf("Error parsing channel: %w", err)
+				}
+
+				if err := updateChannel(ctx, channel, p); err != nil {
+					log.Printf("Error updating channel")
+				}
 			}
 		}
 	}

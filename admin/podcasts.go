@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
+	"github.com/podcreep/server/cron"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
 )
@@ -29,6 +32,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	if r.Method == "GET" {
 		return render(w, "podcast/add.html", nil)
 	}
+	ctx := r.Context()
 
 	// It's a POST, so first, grab the URL of the RSS feed.
 	r.ParseForm()
@@ -48,7 +52,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	// Unmarshal the RSS feed into an object we can query.
 	var feed rss.Feed
 	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		return fmt.Errorf("error unmarshalling response: %v", err)
+		return fmt.Errorf("error unmarshalling response: %w", err)
 	}
 
 	podcast := store.Podcast{
@@ -57,9 +61,36 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 		ImageURL:    feed.Channel.Image.URL,
 		FeedURL:     feed.Channel.Link.Href,
 	}
+	id, err := store.SavePodcast(ctx, &podcast)
+	if err != nil {
+		return fmt.Errorf("error saving podcast: %w", err)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/podcasts/%d", id), 302)
+	return nil
+}
+
+func handlePodcastsEditGet(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return httpError(err.Error(), http.StatusBadRequest)
+	}
+
+	podcast, err := store.LoadPodcast(ctx, podcastID)
+	if err != nil {
+		return httpError(err.Error(), http.StatusNotFound)
+	}
+
+	episodes, err := store.LoadEpisodes(ctx, podcastID, 25)
+	if err != nil {
+		return err
+	}
 
 	return render(w, "podcast/edit.html", map[string]interface{}{
-		"Podcast": podcast,
+		"Podcast":  podcast,
+		"Episodes": episodes,
 	})
 }
 
@@ -88,7 +119,30 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) error {
 	}
 	podcast.ID = id
 
+	// TODO: fetch episodes
+
 	return render(w, "podcast/edit.html", map[string]interface{}{
 		"Podcast": podcast,
 	})
+}
+
+func handlePodcastsRefreshPost(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return httpError(err.Error(), http.StatusBadRequest)
+	}
+
+	podcast, err := store.LoadPodcast(ctx, podcastID)
+	if err != nil {
+		return httpError(err.Error(), http.StatusNotFound)
+	}
+
+	_, err = cron.UpdatePodcast(ctx, podcast, true)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
