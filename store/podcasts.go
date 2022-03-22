@@ -85,12 +85,12 @@ type EpisodeProgress struct {
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if p.ID == 0 {
 		sql := "INSERT INTO podcasts (title, description, image_url, image_path, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
-		row := conn.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
+		row := pool.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
 		err := row.Scan(&p.ID)
 		return p.ID, err
 	} else {
 		sql := "UPDATE podcasts SET title=$1, description=$2, image_url=$3, image_path=$4, feed_url=$5, last_fetch_time=$6 WHERE id=$7"
-		_, err := conn.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
+		_, err := pool.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
 		return p.ID, err
 	}
 }
@@ -103,7 +103,7 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 					 ON CONFLICT (podcast_id, guid) DO UPDATE SET
 					   title=$3, description=$4, description_html=$5, short_description=$6, pub_date=$7, media_url=$8
 					 RETURNING id`
-	row := conn.QueryRow(ctx, sql, ep.GUID, p.ID, ep.Title, ep.Description, ep.DescriptionHTML, ep.ShortDescription, ep.PubDate, ep.MediaURL)
+	row := pool.QueryRow(ctx, sql, ep.GUID, p.ID, ep.Title, ep.Description, ep.DescriptionHTML, ep.ShortDescription, ep.PubDate, ep.MediaURL)
 	var id int64
 	if err := row.Scan(&id); err != nil {
 		return err
@@ -121,7 +121,7 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
 	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
-	row := conn.QueryRow(ctx, sql, podcastID)
+	row := pool.QueryRow(ctx, sql, podcastID)
 	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 		return nil, fmt.Errorf("Error scanning row: %w", err)
 	}
@@ -134,7 +134,7 @@ func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, er
 			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
 		FROM episodes
 		WHERE id = $1`
-	row := conn.QueryRow(ctx, sql, episodeID)
+	row := pool.QueryRow(ctx, sql, episodeID)
 	var ep Episode
 	if err := row.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL); err != nil {
 		return nil, fmt.Errorf("Error scanning row: %w", err)
@@ -180,10 +180,7 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 	if limit > 0 {
 		sql += " LIMIT $2"
 	}
-	rows, err := conn.Query(ctx, sql, podcastID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("Error querying rows: %w", err)
-	}
+	rows, _ := pool.Query(ctx, sql, podcastID, limit)
 	defer rows.Close()
 
 	return populateEpisodes(rows)
@@ -200,10 +197,7 @@ func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast)
 		FROM episodes
 		WHERE podcast_id = $1
 		ORDER BY pub_date DESC`
-	rows, err := conn.Query(ctx, sql, p.ID)
-	if err != nil {
-		return nil, fmt.Errorf("Error querying rows: %w", err)
-	}
+	rows, _ := pool.Query(ctx, sql, p.ID)
 	defer rows.Close()
 
 	return populateEpisodes(rows)
@@ -224,10 +218,7 @@ func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays in
 		WHERE (pub_date > $1 OR ep.position_secs IS NOT NULL)
 		  AND s.account_id = $2
 		ORDER BY pub_date DESC`
-	rows, err := conn.Query(ctx, sql, time.Now().Add(-time.Hour*24*time.Duration(numDays)), acct.ID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Error querying rows: %w", err)
-	}
+	rows, _ := pool.Query(ctx, sql, time.Now().Add(-time.Hour*24*time.Duration(numDays)), acct.ID)
 	defer rows.Close()
 
 	var episodes []*Episode
@@ -252,7 +243,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 	for rows.Next() {
 		var podcast Podcast
 		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
-			return nil, fmt.Errorf("Error scanning podcast: %w", err)
+			return nil, fmt.Errorf("Error scanning podcast2: %w", err)
 		}
 
 		podcasts = append(podcasts, &podcast)
@@ -265,10 +256,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts"
-	rows, err := conn.Query(ctx, sql)
-	if err != nil {
-		return nil, fmt.Errorf("Error querying podcasts: %w", err)
-	}
+	rows, _ := pool.Query(ctx, sql)
 	defer rows.Close()
 
 	return populatePodcasts(rows)
@@ -281,6 +269,6 @@ func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
 		VALUES ($1, $2, $3, 0)
 		ON CONFLICT (account_id, episode_id) DO UPDATE SET
 		position_secs=$3`
-	_, err := conn.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs)
+	_, err := pool.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs)
 	return err
 }

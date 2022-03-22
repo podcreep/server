@@ -18,10 +18,7 @@ type CronJob struct {
 // LoadCronJobs returns all cron jobs in the database.
 func LoadCrobJobs(ctx context.Context) ([]*CronJob, error) {
 	sql := "SELECT id, job_name, schedule, enabled, next_run FROM cron ORDER BY id ASC"
-	rows, err := conn.Query(ctx, sql)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching jobs: %w", err)
-	}
+	rows, _ := pool.Query(ctx, sql)
 	defer rows.Close()
 
 	var jobs []*CronJob
@@ -55,7 +52,7 @@ func LoadCrobJob(ctx context.Context, id int64) (*CronJob, error) {
 // Gets the time we need to wait until the next cron job. Maximum duration is 30 minutes.
 func GetTimeToNextCronJob(ctx context.Context, now time.Time) time.Duration {
 	sql := "SELECT MIN(next_run) FROM cron"
-	row := conn.QueryRow(ctx, sql)
+	row := pool.QueryRow(ctx, sql)
 	var nextRunTime *time.Time
 	err := row.Scan(&nextRunTime)
 	if err != nil || nextRunTime == nil {
@@ -73,10 +70,7 @@ func GetTimeToNextCronJob(ctx context.Context, now time.Time) time.Duration {
 // LoadPendingCronJobs all the cron jobs that are currently scheduled to run now.
 func LoadPendingCronJobs(ctx context.Context, now time.Time) ([]*CronJob, error) {
 	sql := "SELECT id, job_name, schedule, enabled, next_run FROM cron WHERE next_run < $1"
-	rows, err := conn.Query(ctx, sql, now)
-	if err != nil {
-		return nil, err
-	}
+	rows, _ := pool.Query(ctx, sql, now)
 	defer rows.Close()
 
 	var jobs []*CronJob
@@ -94,7 +88,7 @@ func LoadPendingCronJobs(ctx context.Context, now time.Time) ([]*CronJob, error)
 // DeleteCronJob deletes the given cron job from the database.
 func DeleteCronJob(ctx context.Context, id int64) error {
 	sql := "DELETE FROM cron WHERE id = $1"
-	_, err := conn.Exec(ctx, sql, id)
+	_, err := pool.Exec(ctx, sql, id)
 	return err
 }
 
@@ -102,11 +96,11 @@ func DeleteCronJob(ctx context.Context, id int64) error {
 func SaveCronJob(ctx context.Context, job *CronJob) error {
 	if job.ID == 0 {
 		sql := "INSERT INTO cron (job_name, schedule, enabled, next_run) VALUES ($1, $2, $3, $4)"
-		_, err := conn.Exec(ctx, sql, job.Name, job.Schedule, job.Enabled, job.NextRun)
+		_, err := pool.Exec(ctx, sql, job.Name, job.Schedule, job.Enabled, job.NextRun)
 		return err
 	} else {
 		sql := "UPDATE cron SET job_name=$1, schedule=$2, enabled=$3, next_run=$4 WHERE id=$5"
-		_, err := conn.Exec(ctx, sql, job.Name, job.Schedule, job.Enabled, job.NextRun, job.ID)
+		_, err := pool.Exec(ctx, sql, job.Name, job.Schedule, job.Enabled, job.NextRun, job.ID)
 		return err
 	}
 }

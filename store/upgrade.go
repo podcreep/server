@@ -11,7 +11,7 @@ import (
 // GetCurrentSchemaVersion gets the current version of the database schema. A completely fresh
 // database will have version of 0.
 func GetCurrentSchemaVersion(ctx context.Context) int {
-	row := conn.QueryRow(ctx, "SELECT version FROM schema_version")
+	row := pool.QueryRow(ctx, "SELECT version FROM schema_version")
 	var version int
 	if err := row.Scan(&version); err != nil {
 		// The error could be anything, but we'll assume it's just that the table doesn't exist. That
@@ -30,13 +30,13 @@ func UpgradeSchema(ctx context.Context, currentVersion int) error {
 			if os.IsNotExist(err) {
 				log.Printf("Schema up-to-date at version %d", currentVersion)
 
-				_, err := conn.Exec(ctx, "UPDATE schema_version SET version=$1", currentVersion)
+				_, err := pool.Exec(ctx, "UPDATE schema_version SET version=$1", currentVersion)
 				return err
 			}
 			return fmt.Errorf("Error loading schema script: %w", err)
 		}
 
-		_, err = conn.Exec(ctx, script)
+		_, err = pool.Exec(ctx, script)
 		if err != nil {
 			return fmt.Errorf("Error executing command: %w", err)
 		}

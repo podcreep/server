@@ -212,7 +212,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 					return numUpdated, fmt.Errorf("Error updating item: %w", err)
 				}
 				numUpdated++
-			} else if se.Name.Local == "channel" {
+			} /* TODO else if se.Name.Local == "channel" {
 				var channel Channel
 				err := decoder.DecodeElement(&channel, &se)
 				if err != nil {
@@ -222,7 +222,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 				if err := updateChannel(ctx, channel, p); err != nil {
 					log.Printf("Error updating channel")
 				}
-			}
+			}*/
 		}
 	}
 

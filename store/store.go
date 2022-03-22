@@ -7,11 +7,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var (
-	conn *pgx.Conn
+	pool *pgxpool.Pool
 )
 
 func Setup() error {
@@ -19,7 +19,7 @@ func Setup() error {
 	var err error
 
 	dburl := os.Getenv("DATABASE_URL")
-	conn, err = pgx.Connect(ctx, dburl)
+	pool, err = pgxpool.Connect(ctx, dburl)
 	if err != nil {
 		return fmt.Errorf("unable to connect to database: %s %w", dburl, err)
 	}
