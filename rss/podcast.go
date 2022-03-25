@@ -86,25 +86,20 @@ func calculateSha1(filepath string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func updateChannel(ctx context.Context, channel Channel, p *store.Podcast) error {
-	// Note: we do not update the channel title or description, as these can be edited by the admin.
-	// But we do want to check if the image URL has changed.
-	// TODO: remember if they customized it and don't modify it.
-
-	url := channel.Image.URL
+func updateChannelImage(ctx context.Context, image Image, p *store.Podcast) error {
+	url := image.URL
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error fetching %s: %w", image.URL, err)
 	}
-	maybeAddIfModifiedSince(req, p)
+	if p.ImagePath != nil {
+		maybeAddIfModifiedSince(req, p)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		// Note: We'll ignore errors here, if anything goes wrong, we just ignore this update. Hopefully
-		// next time it'll work. Some errors we don't ignore, but stuff like this one would most likely
-		// just be a HTTP error on the server or something.
-		log.Printf("Error fetching podcast URL: %s %v", url, err)
-		// TODO: if we do more than update the icon, we'll want to add this to a helper function.
+		log.Printf("Error fetching image URL: %s %v", url, err)
+		// We don't consider this a bad enough error to stop fetching the rest of the podcast URL.
 		return nil
 	}
 	defer resp.Body.Close()
@@ -137,10 +132,60 @@ func updateChannel(ctx context.Context, channel Channel, p *store.Podcast) error
 		if oldSha1 != newSha1 {
 			log.Printf("SHA mismatch: %s != %s", newSha1, oldSha1)
 
+			// TODO
 		}
 	}
 
 	return nil
+}
+
+func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml.Decoder, p *store.Podcast) (int, error) {
+	numUpdated := 0
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				// that's fine, we're at the end of the stream.
+				break
+			} else {
+				// TODO: not just end of stream but maybe some other error?
+				log.Printf("Error in top-level decoding: %v", err)
+				break
+			}
+		}
+
+		var item Item
+		switch se := token.(type) {
+		case xml.StartElement:
+			if se.Name.Local == "item" {
+				err := decoder.DecodeElement(&item, &se)
+				if err != nil {
+					return 0, fmt.Errorf("Error parsing item: %w", err)
+				}
+
+				if err := updateEpisode(ctx, item, p); err != nil {
+					return numUpdated, fmt.Errorf("Error updating item: %w", err)
+				}
+				numUpdated++
+			} else if se.Name.Local == "image" {
+				var image Image
+				if err := decoder.DecodeElement(&image, &se); err != nil {
+					return 0, fmt.Errorf("Error parsing image: %w", err)
+				}
+
+				if image.URL == "" {
+					// Sometimes there's an <itunes:image> and a "real" image. We'll wait for the real one.
+					continue
+				}
+
+				if err := updateChannelImage(ctx, image, p); err != nil {
+					return 0, fmt.Errorf("Error updating channel image: %w", err)
+				}
+			}
+		}
+	}
+
+	return numUpdated, nil
 }
 
 // UpdatePodcast fetches the feed URL for the given podcast, parses it and updates all of the
@@ -184,7 +229,6 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 	// Unmarshal the RSS feed, loading epsiodes as we go. We are extremely forgiving on the XML
 	// structure, basically skipping everything that's not an <item> element (where the episode
 	// details are stored).
-	var item Item
 	decoder := xml.NewDecoder(resp.Body)
 	numUpdated := 0
 	for {
@@ -202,27 +246,9 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 
 		switch se := token.(type) {
 		case xml.StartElement:
-			if se.Name.Local == "item" {
-				err := decoder.DecodeElement(&item, &se)
-				if err != nil {
-					return 0, fmt.Errorf("Error parsing item: %w", err)
-				}
-
-				if err := updateEpisode(ctx, item, p); err != nil {
-					return numUpdated, fmt.Errorf("Error updating item: %w", err)
-				}
-				numUpdated++
-			} /* TODO else if se.Name.Local == "channel" {
-				var channel Channel
-				err := decoder.DecodeElement(&channel, &se)
-				if err != nil {
-					return 0, fmt.Errorf("Error parsing channel: %w", err)
-				}
-
-				if err := updateChannel(ctx, channel, p); err != nil {
-					log.Printf("Error updating channel")
-				}
-			}*/
+			if se.Name.Local == "channel" {
+				return decodeChannelElement(ctx, se, decoder, p)
+			}
 		}
 	}
 
