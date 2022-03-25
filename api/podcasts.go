@@ -2,13 +2,19 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"image"
+	_ "image/jpeg"
+	"image/png"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
+	"golang.org/x/image/draw"
 )
 
 type podcastDetails struct {
@@ -124,7 +130,34 @@ func handlePodcastIconGet(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	if p.ImagePath == nil {
+		// We haven't downloaded the image yet.
+		return apiError("Image doesn't exist", http.StatusNotFound)
+	}
+
 	// TODO: compare vars["sha1"] (the requests SHA1) with the latest SHA1
+
+	if r.URL.Query().Get("width") != "" && r.URL.Query().Get("height") != "" {
+		// They want a specific size, let's give them a a specific size.
+		width, _ := strconv.Atoi(r.URL.Query().Get("width"))
+		height, _ := strconv.Atoi(r.URL.Query().Get("height"))
+		if width > 0 && height > 0 {
+			file, err := os.Open(*p.ImagePath)
+			if err != nil {
+				return err
+			}
+
+			img, _, err := image.Decode(file)
+			if err != nil {
+				return fmt.Errorf("Error decoding image %s: %w", *p.ImagePath, err)
+			}
+			resized := image.NewRGBA(image.Rect(0, 0, width, height))
+			draw.CatmullRom.Scale(resized, resized.Rect, img, img.Bounds(), draw.Over, nil)
+			w.Header().Add("Content-Type", "image/png")
+			png.Encode(w, resized)
+			return nil
+		}
+	}
 
 	http.ServeFile(w, r, *p.ImagePath)
 	return nil
