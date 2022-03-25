@@ -11,6 +11,7 @@ parser.add_argument('--dbuser', type=str, default='podcreep_user', help='Usernam
 parser.add_argument('--dbpass', type=str, default='', help='Password to use for the database user.')
 parser.add_argument('--dbname', type=str, default='podcreep', help='Name of the database to connect to.')
 parser.add_argument('--dbhost', type=str, default='localhost', help='Host of the database server.')
+parser.add_argument('--blob_store_path', type=str, default='../store', help='Path to a directory on disk where we\'ll store "blobs", i.e. icons etc.')
 parser.add_argument('--admin_password', type=str, default='secret', help='Password to access the admin section.')
 args = parser.parse_args()
 
@@ -26,6 +27,7 @@ def build_and_run_server():
   
   env = os.environ.copy()
   env['DATABASE_URL'] = f'postgres://{args.dbuser}:{args.dbpass}@{args.dbhost}/{args.dbname}'
+  env['BLOB_STORE_PATH'] = args.blob_store_path
   env['DEBUG'] = '1'
   env['ADMIN_PASSWORD'] = args.admin_password
 

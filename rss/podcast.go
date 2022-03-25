@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -131,8 +132,24 @@ func updateChannelImage(ctx context.Context, image Image, p *store.Podcast) erro
 
 		if oldSha1 != newSha1 {
 			log.Printf("SHA mismatch: %s != %s", newSha1, oldSha1)
+			basePath, err := store.GetBlobStorePath("icons")
+			if err != nil {
+				return err
+			}
 
-			// TODO
+			iconPath := path.Join(basePath, newSha1+".png")
+			iconFile, err := os.Create(iconPath)
+			if err != nil {
+				return fmt.Errorf("Error opening icon file %s: %w", iconPath, err)
+			}
+			file.Seek(0, 0)
+			_, err = io.Copy(iconFile, file)
+			if err != nil {
+				return err
+			}
+
+			p.ImagePath = &iconPath
+			p.ImageURL = fmt.Sprintf("/blobs/podcasts/%d/icon/%s.png", p.ID, newSha1)
 		}
 	}
 

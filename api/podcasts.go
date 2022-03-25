@@ -108,3 +108,24 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) error {
 
 	return nil
 }
+
+// handlePodcastIconGet handles requests to view a podcast's icon.
+func handlePodcastIconGet(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return err
+	}
+
+	p, err := store.LoadPodcast(ctx, podcastID)
+	if err != nil {
+		return err
+	}
+
+	// TODO: compare vars["sha1"] (the requests SHA1) with the latest SHA1
+
+	http.ServeFile(w, r, *p.ImagePath)
+	return nil
+}
