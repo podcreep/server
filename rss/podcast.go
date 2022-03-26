@@ -28,6 +28,13 @@ var (
 	httpClient = &http.Client{}
 )
 
+type UpdatePodcastFlags int
+
+const (
+	ForceUpdate UpdatePodcastFlags = 1 << iota
+	IconOnly
+)
+
 // maybeAddIfModifiedSince will add an If-Modified-Since header to the given request, based on the
 // last fetch time of the given podcast.
 func maybeAddIfModifiedSince(req *http.Request, p *store.Podcast) {
@@ -87,11 +94,10 @@ func calculateSha1(filepath string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func updateChannelImage(ctx context.Context, image Image, p *store.Podcast) error {
-	url := image.URL
+func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("Error fetching %s: %w", image.URL, err)
+		return fmt.Errorf("Error fetching %s: %w", url, err)
 	}
 	if p.ImagePath != nil {
 		maybeAddIfModifiedSince(req, p)
@@ -156,7 +162,7 @@ func updateChannelImage(ctx context.Context, image Image, p *store.Podcast) erro
 	return nil
 }
 
-func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml.Decoder, p *store.Podcast) (int, error) {
+func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml.Decoder, p *store.Podcast, flags UpdatePodcastFlags) (int, error) {
 	numUpdated := 0
 	for {
 		token, err := decoder.Token()
@@ -180,22 +186,26 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 					return 0, fmt.Errorf("Error parsing item: %w", err)
 				}
 
-				if err := updateEpisode(ctx, item, p); err != nil {
-					return numUpdated, fmt.Errorf("Error updating item: %w", err)
+				if (flags & IconOnly) == 0 {
+					if err := updateEpisode(ctx, item, p); err != nil {
+						return numUpdated, fmt.Errorf("Error updating item: %w", err)
+					}
+					numUpdated++
 				}
-				numUpdated++
 			} else if se.Name.Local == "image" {
 				var image Image
 				if err := decoder.DecodeElement(&image, &se); err != nil {
 					return 0, fmt.Errorf("Error parsing image: %w", err)
 				}
 
-				if image.URL == "" {
-					// Sometimes there's an <itunes:image> and a "real" image. We'll wait for the real one.
-					continue
+				url := image.URL
+				if url == "" {
+					// Sometimes there's an <itunes:image>, which has a 'href' attribute. We'll try that
+					// as well. If the XML has both (and they are different) the last one wins.
+					url = image.Href
 				}
 
-				if err := updateChannelImage(ctx, image, p); err != nil {
+				if err := updateChannelImage(ctx, url, p); err != nil {
 					return 0, fmt.Errorf("Error updating channel image: %w", err)
 				}
 			}
@@ -216,8 +226,9 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 // older than the oldest episode we have already stored is ignored (if there's no existing episode
 // then we assume this is a new podcast and load everything).
 //
-// If force is true, then we ignore existing episodes and re-store all episodes in the RSS file.
-func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, error) {
+// If flags contains ForceUpdate, then we ignore existing episodes and re-store all episodes in the
+// RSS file. If it contains IconOnly, we skip updating episodes and just update the icon.
+func UpdatePodcast(ctx context.Context, p *store.Podcast, flags UpdatePodcastFlags) (int, error) {
 	log.Printf("Updating podcast: [%d] %s", p.ID, p.Title)
 
 	// Fetch the RSS feed via a HTTP request.
@@ -226,7 +237,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 		log.Printf(" - error creating RSS request: %v", err)
 		return 0, err
 	}
-	if !force {
+	if (flags & ForceUpdate) == 0 {
 		maybeAddIfModifiedSince(req, p)
 	}
 
@@ -264,7 +275,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, force bool) (int, erro
 		switch se := token.(type) {
 		case xml.StartElement:
 			if se.Name.Local == "channel" {
-				return decodeChannelElement(ctx, se, decoder, p)
+				return decodeChannelElement(ctx, se, decoder, p, flags)
 			}
 		}
 	}

@@ -139,7 +139,12 @@ func handlePodcastsRefreshPost(w http.ResponseWriter, r *http.Request) error {
 		return httpError(err.Error(), http.StatusNotFound)
 	}
 
-	_, err = cron.UpdatePodcast(ctx, podcast, true)
+	flags := rss.ForceUpdate
+	if r.URL.Query().Get("iconOnly") == "1" {
+		flags |= rss.IconOnly
+	}
+
+	_, err = cron.UpdatePodcast(ctx, podcast, flags)
 	if err != nil {
 		return err
 	}

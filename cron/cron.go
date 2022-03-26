@@ -47,7 +47,7 @@ func cronCheckUpdates(ctx context.Context) error {
 		}
 
 		log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
-		numUpdated, err := UpdatePodcast(ctx, p, false)
+		numUpdated, err := UpdatePodcast(ctx, p, 0 /*flags*/)
 		if err != nil {
 			return fmt.Errorf("Error updating podcast: %w", err)
 		}
@@ -56,7 +56,7 @@ func cronCheckUpdates(ctx context.Context) error {
 	return nil
 }
 
-func UpdatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int, error) {
+func UpdatePodcast(ctx context.Context, podcast *store.Podcast, flags rss.UpdatePodcastFlags) (int, error) {
 	// The podcast we get here will not have the episodes populated, as it comes from the list.
 	// So fetch the episodes manually. We just get the latest 10 episodes. Anything older than this
 	// we will ignore entirely.
@@ -68,7 +68,7 @@ func UpdatePodcast(ctx context.Context, podcast *store.Podcast, force bool) (int
 	podcast.Episodes = episodes
 
 	// Actually do the update.
-	numUpdated, error := rss.UpdatePodcast(ctx, podcast, force)
+	numUpdated, error := rss.UpdatePodcast(ctx, podcast, flags)
 
 	// Update the last fetch time.
 	podcast.LastFetchTime = time.Now()

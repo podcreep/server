@@ -4,6 +4,7 @@ package rss
 // Image ...
 type Image struct {
 	URL   string `xml:"url"`
+	Href  string `xml:"href,attr"`
 	Title string `xml:"title"`
 	Link  string `xml:"link"`
 }

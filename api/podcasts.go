@@ -101,7 +101,7 @@ func handlePodcastGet(w http.ResponseWriter, r *http.Request) error {
 	if r.URL.Query().Get("refresh") == "1" {
 		// They've asked us explicitly to refresh the podcast (and all it's episodes), so do that
 		// first before fetching the podcast.
-		if _, err := rss.UpdatePodcast(ctx, p, false); err != nil {
+		if _, err := rss.UpdatePodcast(ctx, p, 0 /*flags*/); err != nil {
 			log.Printf("Erroring updating podcast: %v\n", err)
 			// Note: we just keep going, assuming the podcast didn't change.
 		}

@@ -36,7 +36,10 @@
     <p><input type="text" name="Title" class="title" value="{{.Podcast.Title}}"></p>
     <p><textarea name="Description">{{.Podcast.Description}}</textarea></p>
     <p><b>Image:</b> <input type="text" name="ImageUrl" value="{{.Podcast.ImageURL}}" ></p>
-    <p><img src="{{.Podcast.ImageURL}}?width=100&height=100" width="100" /></p>
+    <p>
+      <img src="{{.Podcast.ImageURL}}?width=100&height=100" width="100" />
+      <button onclick="refreshPodcastIcon({{.Podcast.ID}}); return false;">Refresh icon</button>
+    </p>
     <p><b>URL:</b> <input type="text" name="FeedUrl" value="{{.Podcast.FeedURL}}"></p>
     <p>
       <button type="submit">Save</button>
@@ -56,6 +59,16 @@
     function refreshPodcast(id) {
       $.ajax({
         "url": "/admin/podcasts/" + id + "/refresh",
+        "method": "POST",
+        "success": function() {
+          location.reload();
+        }
+      });
+    }
+
+    function refreshPodcastIcon(id) {
+      $.ajax({
+        "url": "/admin/podcasts/" + id + "/refresh?iconOnly=1",
         "method": "POST",
         "success": function() {
           location.reload();
