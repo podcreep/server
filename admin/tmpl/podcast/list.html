@@ -22,7 +22,7 @@
 
   {{range $index, $p := .Podcasts}}
     <div class="podcast" onclick="showPodcast({{$p.ID}}); return false;">
-      <img src="{{$p.ImageURL}}" width="100" />
+      <img src="{{$p.ImageURL}}?width=100&height=100" width="100" />
       <div>{{$p.Title}}</div>
       <div>{{$p.FeedURL}}</div>
     </div>

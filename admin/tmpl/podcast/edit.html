@@ -36,7 +36,7 @@
     <p><input type="text" name="Title" class="title" value="{{.Podcast.Title}}"></p>
     <p><textarea name="Description">{{.Podcast.Description}}</textarea></p>
     <p><b>Image:</b> <input type="text" name="ImageUrl" value="{{.Podcast.ImageURL}}" ></p>
-    <p><img src="{{.Podcast.ImageURL}}" width="100" /></p>
+    <p><img src="{{.Podcast.ImageURL}}?width=100&height=100" width="100" /></p>
     <p><b>URL:</b> <input type="text" name="FeedUrl" value="{{.Podcast.FeedURL}}"></p>
     <p>
       <button type="submit">Save</button>

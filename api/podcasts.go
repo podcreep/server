@@ -137,6 +137,11 @@ func handlePodcastIconGet(w http.ResponseWriter, r *http.Request) error {
 
 	// TODO: compare vars["sha1"] (the requests SHA1) with the latest SHA1
 
+	// We put the SHA1 in the filename, so if it ever changes, the URL would be different. Given that,
+	// browsers are free to cache this response forever.
+	// TODO: handle If-Modified-Since?
+	w.Header().Add("Cache-Control", "public, max-age=31536000")
+
 	if r.URL.Query().Get("width") != "" && r.URL.Query().Get("height") != "" {
 		// They want a specific size, let's give them a a specific size.
 		width, _ := strconv.Atoi(r.URL.Query().Get("width"))
