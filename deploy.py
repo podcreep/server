@@ -16,6 +16,7 @@ parser.add_argument('--keystore_pass', type=str, default='', help='Password for 
 parser.add_argument('--server_dest', type=str, required=True, help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
 parser.add_argument('--build_android', action=argparse.BooleanOptionalAction, default=True, help='Build the android app.')
 parser.add_argument('--build_server', action=argparse.BooleanOptionalAction, default=True, help='Build (and deploy) the server.')
+parser.add_argument('--install_android', action=argparse.BooleanOptionalAction, default=False, help='If set, attempt to install the Android APK to a connected Android device. Only honored if also building the Android app (i.e. you have not specified --no-build_android)')
 args = parser.parse_args()
 
 web_path = os.path.abspath(args.web_path)
@@ -23,6 +24,7 @@ server_path = os.path.abspath(args.server_path)
 android_path = os.path.abspath(args.android_path)
 keystore_path = os.path.abspath(args.keystore_path)
 deploy_path = os.path.abspath(args.deploy_path)
+bundletool_path = os.path.join(android_path, "bundletool-all-1.8.2.jar")
 
 # In addition to .go and .py source files, which we ignore when creating the server dist folder,
 # we'll also ignore this list of files.
@@ -154,7 +156,6 @@ def sign_android():
 
 
 def get_app_version():
-  bundletool_path = os.path.join(android_path, "bundletool-all-1.8.2.jar")
   proc = subprocess.run([
       "java", "-jar", bundletool_path, "dump", "manifest", "--bundle", ANDROID_AAB_PATH,
       "--xpath", "/manifest/@android:versionName"
@@ -173,6 +174,20 @@ def copy_android():
   shutil.copy(ANDROID_AAB_PATH, os.path.join(dest_dir, dest_file))
 
 
+def install_android():
+  # TODO: check a device is connected first?
+  print(" - building APK")
+  dest_path = os.path.join(deploy_path, "android", "podcreep.apks")
+  if os.path.exists(dest_path):
+    os.remove(dest_path)
+  subprocess.run([
+      "java", "-jar", bundletool_path, "build-apks", "--bundle", ANDROID_AAB_PATH,
+      "--ks", keystore_path, "--ks-key-alias", "Codeka", "--ks-pass", "pass:" + args.keystore_pass,
+      "--output", dest_path])
+  print(" - installing APK")
+  subprocess.run(["java", "-jar", bundletool_path, "install-apks", "--apks", dest_path])
+
+
 def main():
   # TODO: probably we can do both the android build and server build at the same time in separate
   # threads. They don't really touch on each other in any way.
@@ -189,6 +204,8 @@ def main():
     build_android()
     sign_android()
     copy_android()
+    if args.install_android:
+      install_android()
 
 
 if __name__ == "__main__":
