@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 
 	"github.com/podcreep/server/store"
@@ -57,8 +60,14 @@ func handleAccountsPost(w http.ResponseWriter, r *http.Request) error {
 func handleAccountsLoginPost(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	log.Printf("Request: %s", string(b))
+
 	var req accountsPostRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err = json.NewDecoder(bytes.NewReader(b)).Decode(&req)
 	if err != nil {
 		return err
 	}
@@ -66,7 +75,8 @@ func handleAccountsLoginPost(w http.ResponseWriter, r *http.Request) error {
 
 	acct, err := store.LoadAccountByUsername(ctx, req.Username, req.Password)
 	if err != nil {
-		return err
+		log.Printf("Error loading account for %s: %v", req.Username, err)
+		return apiError("Invalid username/password", http.StatusUnauthorized)
 	}
 
 	if acct == nil {
