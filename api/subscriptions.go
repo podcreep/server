@@ -21,18 +21,10 @@ const (
 type subscription struct {
 	// Podcast is the podcast this subscription is for.
 	Podcast *store.Podcast `json:"podcast"`
-
-	// PositionsMap is a nicer encoding of Positions for JSON. The key is the episode ID (as a
-	// string, because that's what JSON requires), and the value is the offset in seconds that you're
-	// up to (again, negative for completely-played episodes).
-	Positions map[string]int32 `json:"positions"`
 }
 
 type episodeDetails struct {
 	store.Episode
-
-	// Position is the progress you've made into this episode.
-	Position int32 `json:"position"`
 }
 
 // This is returned to the client when it requests the users subscriptions.
@@ -64,7 +56,7 @@ func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscription,
 
 	var subscriptions []subscription
 	for _, podcast := range podcasts {
-		sub := subscription{podcast, make(map[string]int32)}
+		sub := subscription{podcast}
 		subscriptions = append(subscriptions, sub)
 	}
 
@@ -100,15 +92,13 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) error {
 	for _, ep := range ne {
 		podcastIDs[ep.PodcastID] = struct{}{}
 		newEpisodes = append(newEpisodes, &episodeDetails{
-			Episode:  *ep,
-			Position: 0,
+			Episode: *ep,
 		})
 	}
 	for _, ep := range ip {
 		podcastIDs[ep.PodcastID] = struct{}{}
 		inProgress = append(inProgress, &episodeDetails{
-			Episode:  ep.Episode,
-			Position: ep.Position,
+			Episode: *ep,
 		})
 	}
 	sort.Slice(newEpisodes, func(i, j int) bool {

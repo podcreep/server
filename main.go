@@ -28,6 +28,8 @@ func setupStaticFiles(r *mux.Router) {
 }
 
 func main() {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

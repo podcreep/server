@@ -54,15 +54,14 @@ type Episode struct {
 	ShortDescription string    `json:"shortDescription"`
 	PubDate          time.Time `json:"pubDate"`
 	MediaURL         string    `json:"mediaUrl"`
-}
 
-// InProgressEpisode is an Episode that contains addition "progress", for episodes that you are
-// currently partially-through.
-type InProgressEpisode struct {
-	Episode
+	// Position is the offset, in seconds, that the user is at for the episode. This will be null for
+	// episodes that don't have any progress (either the user is not subscribed, or they haven't
+	// started watching yet).
+	Position *int32 `json:"position"`
 
-	// Position is the offset, in seconds, that the user is at for the episode.
-	Position int32
+	// IsComplete will be true if the user has fully listened to this episode.
+	IsComplete *bool `json:"isComplete"`
 }
 
 // EpisodeProgress is the state of a single episode of a podcast for a given account.
@@ -145,13 +144,7 @@ func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, er
 
 func populateEpisode(currRow pgx.Rows) (*Episode, error) {
 	var ep Episode
-	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL)
-	return &ep, err
-}
-
-func populateInProgressEpisode(currRow pgx.Rows) (*InProgressEpisode, error) {
-	var ep InProgressEpisode
-	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position)
+	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position, &ep.IsComplete)
 	return &ep, err
 }
 
@@ -173,7 +166,7 @@ func populateEpisodes(rows pgx.Rows) ([]*Episode, error) {
 // then loads all episodes.
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	sql := `SELECT
-	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, NULL, NULL
 		FROM episodes
 		WHERE podcast_id = $1
 		ORDER BY pub_date DESC`
@@ -189,12 +182,10 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 // LoadEpisodesForSubscription gets the episodes to display for the given subscribed account. We'll
 // return all episodes that the account has not finished listening to.
 func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
-
-	// TODO: check episode_progress
-
 	sql := `SELECT
-			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, position_secs, episode_complete
 		FROM episodes
+		LEFT OUTER JOIN episode_progress ON episodes.id = episode_progress.episode_id
 		WHERE podcast_id = $1
 		ORDER BY pub_date DESC`
 	rows, _ := pool.Query(ctx, sql, p.ID)
@@ -208,10 +199,10 @@ func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast)
 // days). And of course, in-progress ones are ones that have progress but are not yet
 // marked done. For in-progress episode, we don't just limit them to the last numDays days, we will
 // return them all.
-func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*InProgressEpisode, err error) {
+func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*Episode, err error) {
 	sql := `
 		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
-		       pub_date, media_url, (CASE WHEN position_secs IS NULL THEN 0 ELSE position_secs END)
+		       pub_date, media_url, position_secs, episode_complete
 		FROM episodes e
 		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
 		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
@@ -223,13 +214,13 @@ func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays in
 
 	var episodes []*Episode
 	for rows.Next() {
-		ep, err := populateInProgressEpisode(rows)
+		ep, err := populateEpisode(rows)
 		if err != nil {
 			return nil, nil, fmt.Errorf("Error scanning row: %w", err)
 		}
 
-		if ep.Position == 0 {
-			episodes = append(episodes, &ep.Episode)
+		if ep.Position == nil {
+			episodes = append(episodes, ep)
 		} else {
 			inProgress = append(inProgress, ep)
 		}
