@@ -104,6 +104,10 @@ func handleSubscriptionsGet(w http.ResponseWriter, r *http.Request) error {
 	sort.Slice(newEpisodes, func(i, j int) bool {
 		return newEpisodes[i].PubDate.After(newEpisodes[j].PubDate)
 	})
+	// Sort in progress episodes by the last time you listened it, so most recently-listened first.
+	sort.Slice(inProgress, func(i, j int) bool {
+		return inProgress[i].LastListenTime.After(*inProgress[j].LastListenTime)
+	})
 
 	return json.NewEncoder(w).Encode(&subscriptionDetailsList{
 		Subscriptions: subscriptionDetails,

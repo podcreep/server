@@ -62,6 +62,9 @@ type Episode struct {
 
 	// IsComplete will be true if the user has fully listened to this episode.
 	IsComplete *bool `json:"isComplete"`
+
+	// LastListenTime is the last time you listened to this episode. Null if you haven't listened yet.
+	LastListenTime *time.Time `json:"lastListenTime"`
 }
 
 // EpisodeProgress is the state of a single episode of a podcast for a given account.
@@ -78,6 +81,9 @@ type EpisodeProgress struct {
 
 	// EpisodeComplete is true when the user has marked this episode complete.
 	EpisodeComplete bool
+
+	// LastUpdated is the date/time this playback state was actually saved.
+	LastUpdated time.Time
 }
 
 // SavePodcast saves the given podcast to the store.
@@ -142,9 +148,9 @@ func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, er
 	return &ep, nil
 }
 
-func populateEpisode(currRow pgx.Rows) (*Episode, error) {
+func populateEpisode(currRow pgx.Row) (*Episode, error) {
 	var ep Episode
-	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position, &ep.IsComplete)
+	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position, &ep.IsComplete, &ep.LastListenTime)
 	return &ep, err
 }
 
@@ -166,7 +172,7 @@ func populateEpisodes(rows pgx.Rows) ([]*Episode, error) {
 // then loads all episodes.
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	sql := `SELECT
-	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, NULL, NULL
+	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, NULL, NULL, NULL
 		FROM episodes
 		WHERE podcast_id = $1
 		ORDER BY pub_date DESC`
@@ -183,7 +189,7 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 // return all episodes that the account has not finished listening to.
 func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
 	sql := `SELECT
-			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, position_secs, episode_complete
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, position_secs, episode_complete, episode_progress.last_updated
 		FROM episodes
 		LEFT OUTER JOIN episode_progress ON episodes.id = episode_progress.episode_id
 		WHERE podcast_id = $1
@@ -202,7 +208,7 @@ func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast)
 func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*Episode, err error) {
 	sql := `
 		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
-		       pub_date, media_url, position_secs, episode_complete
+		       pub_date, media_url, position_secs, episode_complete, ep.last_updated
 		FROM episodes e
 		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
 		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
@@ -255,12 +261,30 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 
 // SaveEpisodeProgress saves the given EpisodeProgress to the database.
 func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
+	now := time.Now()
+	if progress.LastUpdated.After(now) {
+		progress.LastUpdated = time.Now()
+	}
 	sql := `INSERT INTO episode_progress
 		(account_id, episode_id, position_secs, episode_complete, last_updated)
-		VALUES ($1, $2, $3, FALSE, NOW())
+		VALUES ($1, $2, $3, FALSE, $4)
 		ON CONFLICT (account_id, episode_id) DO UPDATE SET
 		position_secs=$3,
-		last_updated=NOW()`
-	_, err := pool.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs)
+		last_updated=$4`
+	_, err := pool.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs, progress.LastUpdated)
 	return err
+}
+
+func GetMostRecentPlaybackState(ctx context.Context, acct *Account) (*Episode, error) {
+	sql := `
+		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
+		       pub_date, media_url, position_secs, episode_complete, ep.last_updated
+		FROM episodes e
+		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
+		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
+		WHERE s.account_id = $1
+		ORDER BY ep.last_updated DESC
+		LIMIT 1`
+	row := pool.QueryRow(ctx, sql, acct.ID)
+	return populateEpisode(row)
 }

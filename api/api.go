@@ -72,6 +72,7 @@ func Setup(r *mux.Router) error {
 	r.HandleFunc("/api/podcasts/{id:[0-9]+}/episodes/{ep:[0-9]+}/playback-state", wrap(handlePlaybackStatePut)).Methods("PUT")
 	r.HandleFunc("/api/subscriptions", wrap(handleSubscriptionsGet)).Methods("GET")
 	r.HandleFunc("/api/subscriptions/sync", wrap(handleSubscriptionsSync)).Methods("POST")
+	r.HandleFunc("/api/last-played", wrap(handleLastPlayedGet)).Methods("GET")
 
 	return nil
 }

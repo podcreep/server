@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/podcreep/server/store"
 )
@@ -19,8 +20,9 @@ type PlaybackState struct {
 	// finished the episode and we mark it "done".
 	Position int32 `json:"position"`
 
-	// UpdateDoneCutoffDate is true when the user wants to mark this and all older episodes as "done".
-	UpdateDoneCutoffDate bool `json:"updateDoneCutoffDate"`
+	// LastUpdated is the time this playback state was recorded by the client. It could be a while
+	// ago, if it's taken a while for the client to sync.
+	LastUpdated time.Time `json:"lastUpdated"`
 }
 
 // handlePlaybackStatePut handles requests to update the playback state of a single episode of a
@@ -33,9 +35,8 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) error {
 		return apiError("Not authorized", http.StatusUnauthorized)
 	}
 
-	decoder := json.NewDecoder(r.Body)
 	playbackState := PlaybackState{}
-	if err := decoder.Decode(&playbackState); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&playbackState); err != nil {
 		return apiError("Request is not valid", http.StatusBadRequest)
 	}
 
@@ -49,8 +50,8 @@ func handlePlaybackStatePut(w http.ResponseWriter, r *http.Request) error {
 		EpisodeID:       playbackState.EpisodeID,
 		PositionSecs:    playbackState.Position,
 		EpisodeComplete: false, // TODO
+		LastUpdated:     playbackState.LastUpdated,
 	}
-	// TODO: update playback state
 	if err := store.SaveEpisodeProgress(ctx, &progress); err != nil {
 		return err
 	}
