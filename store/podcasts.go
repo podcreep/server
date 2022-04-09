@@ -256,10 +256,11 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 // SaveEpisodeProgress saves the given EpisodeProgress to the database.
 func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
 	sql := `INSERT INTO episode_progress
-		(account_id, episode_id, position_secs, episode_complete)
-		VALUES ($1, $2, $3, 0)
+		(account_id, episode_id, position_secs, episode_complete, last_updated)
+		VALUES ($1, $2, $3, FALSE, NOW())
 		ON CONFLICT (account_id, episode_id) DO UPDATE SET
-		position_secs=$3`
+		position_secs=$3,
+		last_updated=NOW()`
 	_, err := pool.Exec(ctx, sql, progress.AccountID, progress.EpisodeID, progress.PositionSecs)
 	return err
 }
