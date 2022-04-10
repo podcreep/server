@@ -7,6 +7,12 @@ import (
 	"github.com/podcreep/server/store"
 )
 
+// LastPlayedResponse is the response we give for a last played request.
+type LastPlayedResponse struct {
+	Podcast *store.Podcast `json:"podcast"`
+	Episode *store.Episode `json:"episode"`
+}
+
 // handleLastPlayedGet handles requests to get the last played episode for a user.
 func handleLastPlayedGet(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
@@ -22,5 +28,15 @@ func handleLastPlayedGet(w http.ResponseWriter, r *http.Request) error {
 		return apiError("No recently-played", http.StatusNotFound)
 	}
 
-	return json.NewEncoder(w).Encode(ep)
+	podcast, err := store.LoadPodcast(ctx, ep.PodcastID)
+	if err != nil {
+		// Shouldn't happen, but you never know.
+		return apiError("Error fetching podcast", http.StatusInternalServerError)
+	}
+
+	resp := LastPlayedResponse{
+		Podcast: podcast,
+		Episode: ep,
+	}
+	return json.NewEncoder(w).Encode(&resp)
 }

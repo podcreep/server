@@ -281,7 +281,7 @@ func GetMostRecentPlaybackState(ctx context.Context, acct *Account) (*Episode, e
 		       pub_date, media_url, position_secs, episode_complete, ep.last_updated
 		FROM episodes e
 		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
-		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
+		INNER JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
 		WHERE s.account_id = $1
 		ORDER BY ep.last_updated DESC
 		LIMIT 1`
