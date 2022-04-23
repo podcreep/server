@@ -44,6 +44,7 @@
     <p>
       <button type="submit">Save</button>
       <button onclick="refreshPodcast({{.Podcast.ID}}); return false;">Refresh</button>
+      <button onclick="deletePodcast({{.Podcast.ID}}, '{{.Podcast.Title}}'); return false;">Delete</button>
     </p>
   </form>
 
@@ -74,6 +75,18 @@
           location.reload();
         }
       });
+    }
+
+    function deletePodcast(id, title) {
+      if (confirm("Are you sure you want to delete '" + title + "'? This cannot be undone!")) {
+        $.ajax({
+        "url": "/admin/podcasts/" + id,
+        "method": "DELETE",
+        "success": function() {
+          location.href = "/admin/podcasts";
+        }
+      });
+      }
     }
   </script>
 {{end}}

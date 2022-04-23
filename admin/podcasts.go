@@ -126,6 +126,23 @@ func handlePodcastsEditPost(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
+func handlePodcastsDelete(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return httpError(err.Error(), http.StatusBadRequest)
+	}
+
+	podcast, err := store.LoadPodcast(ctx, podcastID)
+	if err != nil {
+		return httpError(err.Error(), http.StatusNotFound)
+	}
+
+	log.Printf("Deleting: %v\n", podcast)
+	return store.DeletePodcast(ctx, podcast)
+}
+
 func handlePodcastsRefreshPost(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	vars := mux.Vars(r)

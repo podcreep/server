@@ -259,6 +259,14 @@ func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
 	return populatePodcasts(rows)
 }
 
+// DeletePodcast deletes the podcast with the given ID. This should remove the podcast as well as
+// all episodes, subscriptions and so on.
+func DeletePodcast(ctx context.Context, podcast *Podcast) error {
+	sql := "DELETE FROM podcasts WHERE id=$1"
+	_, err := pool.Exec(ctx, sql, podcast.ID)
+	return err
+}
+
 // SaveEpisodeProgress saves the given EpisodeProgress to the database.
 func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
 	now := time.Now()
