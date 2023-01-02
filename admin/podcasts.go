@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -12,6 +13,11 @@ import (
 	"github.com/podcreep/server/cron"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
+)
+
+var (
+	// http.Client we'll use to make HTTP requests.
+	httpClient = &http.Client{}
 )
 
 func handlePodcastsList(w http.ResponseWriter, r *http.Request) error {
@@ -37,16 +43,23 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	// It's a POST, so first, grab the URL of the RSS feed.
 	r.ParseForm()
 	url := r.Form.Get("url")
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %sL %v", url, err)
+	}
 	log.Printf("Fetching RSS URL: %s\n", url)
+	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
 
 	// Fetch the RSS feed via a HTTP request.
-	resp, err := http.Get(url)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("error fetching URL: %s: %v", url, err)
 	}
 	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("error fetching URL: %s status=%d", url, resp.StatusCode)
+		reqDump, _ := httputil.DumpRequest(req, true)
+		respDump, _ := httputil.DumpResponse(resp, true)
+		return fmt.Errorf("error fetching URL: %s status=%d\n%s\n\n%s", url, resp.StatusCode, string(reqDump), string(respDump))
 	}
 
 	// Unmarshal the RSS feed into an object we can query.

@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"path"
 	"strings"
@@ -102,6 +103,7 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 	if p.ImagePath != nil {
 		maybeAddIfModifiedSince(req, p)
 	}
+	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -240,6 +242,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, flags UpdatePodcastFla
 	if (flags & ForceUpdate) == 0 {
 		maybeAddIfModifiedSince(req, p)
 	}
+	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -251,7 +254,8 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, flags UpdatePodcastFla
 		return 0, nil
 	}
 	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("error fetching URL: %s status=%d", p.FeedURL, resp.StatusCode)
+		dump, _ := httputil.DumpResponse(resp, true)
+		return 0, fmt.Errorf("error fetching URL: %s status=%d\n%s", p.FeedURL, resp.StatusCode, string(dump))
 	}
 
 	// Unmarshal the RSS feed, loading epsiodes as we go. We are extremely forgiving on the XML
