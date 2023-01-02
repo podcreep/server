@@ -25,7 +25,7 @@ func LoadCrobJobs(ctx context.Context) ([]*CronJob, error) {
 	for rows.Next() {
 		job := CronJob{}
 		if err := rows.Scan(&job.ID, &job.Name, &job.Schedule, &job.Enabled, &job.NextRun); err != nil {
-			return nil, fmt.Errorf("Error scanning row: %w", err)
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		jobs = append(jobs, &job)
 	}
@@ -46,7 +46,7 @@ func LoadCrobJob(ctx context.Context, id int64) (*CronJob, error) {
 			return cronJob, nil
 		}
 	}
-	return nil, fmt.Errorf("No such cron job: %d", id)
+	return nil, fmt.Errorf("no such cron job: %d", id)
 }
 
 // Gets the time we need to wait until the next cron job. Maximum duration is 30 minutes.
@@ -77,7 +77,7 @@ func LoadPendingCronJobs(ctx context.Context, now time.Time) ([]*CronJob, error)
 	for rows.Next() {
 		job := CronJob{}
 		if err := rows.Scan(&job.ID, &job.Name, &job.Schedule, &job.Enabled, &job.NextRun); err != nil {
-			return nil, fmt.Errorf("Error scanning row: %w", err)
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 		jobs = append(jobs, &job)
 	}

@@ -80,7 +80,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error saving podcast: %w", err)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/podcasts/%d", id), 302)
+	http.Redirect(w, r, fmt.Sprintf("/admin/podcasts/%d", id), http.StatusFound)
 	return nil
 }
 

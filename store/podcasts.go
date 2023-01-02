@@ -6,12 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/microcosm-cc/bluemonday"
-)
-
-var (
-	// The policy we use to sanitize the Description's HTML.
-	htmlDescriptionPolicy = bluemonday.UGCPolicy()
 )
 
 // Podcast is the parent entity for a podcast.
@@ -116,7 +110,7 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 
 	if ep.ID != 0 && ep.ID != id {
 		// TODO: delete the episode, something has gone wrong
-		return fmt.Errorf("Found existing episode with same GUID but different ID")
+		return fmt.Errorf("found existing episode with same GUID but different ID")
 	}
 
 	return nil
@@ -128,7 +122,7 @@ func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
 	row := pool.QueryRow(ctx, sql, podcastID)
 	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
-		return nil, fmt.Errorf("Error scanning row: %w", err)
+		return nil, fmt.Errorf("error scanning row: %w", err)
 	}
 	return podcast, nil
 }
@@ -142,7 +136,7 @@ func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, er
 	row := pool.QueryRow(ctx, sql, episodeID)
 	var ep Episode
 	if err := row.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL); err != nil {
-		return nil, fmt.Errorf("Error scanning row: %w", err)
+		return nil, fmt.Errorf("error scanning row: %w", err)
 	}
 
 	return &ep, nil
@@ -159,7 +153,7 @@ func populateEpisodes(rows pgx.Rows) ([]*Episode, error) {
 	for rows.Next() {
 		ep, err := populateEpisode(rows)
 		if err != nil {
-			return nil, fmt.Errorf("Error scanning row: %w", err)
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 
 		episodes = append(episodes, ep)
@@ -222,7 +216,7 @@ func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays in
 	for rows.Next() {
 		ep, err := populateEpisode(rows)
 		if err != nil {
-			return nil, nil, fmt.Errorf("Error scanning row: %w", err)
+			return nil, nil, fmt.Errorf("error scanning row: %w", err)
 		}
 
 		if ep.Position == nil {
@@ -240,7 +234,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 	for rows.Next() {
 		var podcast Podcast
 		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
-			return nil, fmt.Errorf("Error scanning podcast2: %w", err)
+			return nil, fmt.Errorf("error scanning podcast2: %w", err)
 		}
 
 		podcasts = append(podcasts, &podcast)

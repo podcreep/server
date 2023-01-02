@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -99,7 +98,7 @@ func calculateSha1(filepath string) (string, error) {
 func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("Error fetching %s: %w", url, err)
+		return fmt.Errorf("error fetching %s: %w", url, err)
 	}
 	if p.ImagePath != nil {
 		maybeAddIfModifiedSince(req, p)
@@ -117,25 +116,25 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 	if resp.StatusCode == 304 {
 		log.Printf("Image hasn't been updated, no need to fetch again.")
 	} else {
-		file, err := ioutil.TempFile("", "icon")
+		file, err := os.CreateTemp("", "icon")
 		if err != nil {
-			return fmt.Errorf("Error creating a temporary file: %w", err)
+			return fmt.Errorf("error creating a temporary file: %w", err)
 		}
 		defer os.Remove(file.Name())
 
 		_, err = io.Copy(file, resp.Body)
 		if err != nil {
-			return fmt.Errorf("Error saving image: %w", err)
+			return fmt.Errorf("error saving image: %w", err)
 		}
 
-		newSha1, err := calculateSha1(file.Name())
+		newSha1, _ := calculateSha1(file.Name())
 		log.Printf("New image SHA1: %s", newSha1)
 
 		oldSha1 := ""
 		if p.ImagePath != nil {
 			oldSha1, err = calculateSha1(*p.ImagePath)
 			if err != nil {
-				return fmt.Errorf("Error calculating SHA1: %w", err)
+				return fmt.Errorf("error calculating SHA1: %w", err)
 			}
 		}
 
@@ -149,7 +148,7 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 			iconPath := path.Join(basePath, newSha1+".png")
 			iconFile, err := os.Create(iconPath)
 			if err != nil {
-				return fmt.Errorf("Error opening icon file %s: %w", iconPath, err)
+				return fmt.Errorf("error opening icon file %s: %w", iconPath, err)
 			}
 			file.Seek(0, 0)
 			_, err = io.Copy(iconFile, file)
@@ -186,19 +185,19 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 			if se.Name.Local == "item" {
 				err := decoder.DecodeElement(&item, &se)
 				if err != nil {
-					return 0, fmt.Errorf("Error parsing item: %w", err)
+					return 0, fmt.Errorf("error parsing item: %w", err)
 				}
 
 				if (flags & IconOnly) == 0 {
 					if err := updateEpisode(ctx, item, p); err != nil {
-						return numUpdated, fmt.Errorf("Error updating item: %w", err)
+						return numUpdated, fmt.Errorf("error updating item: %w", err)
 					}
 					numUpdated++
 				}
 			} else if se.Name.Local == "image" {
 				var image Image
 				if err := decoder.DecodeElement(&image, &se); err != nil {
-					return 0, fmt.Errorf("Error parsing image: %w", err)
+					return 0, fmt.Errorf("error parsing image: %w", err)
 				}
 
 				url := image.URL
@@ -209,7 +208,7 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 				}
 
 				if err := updateChannelImage(ctx, url, p); err != nil {
-					return 0, fmt.Errorf("Error updating channel image: %w", err)
+					return 0, fmt.Errorf("error updating channel image: %w", err)
 				}
 			}
 		}

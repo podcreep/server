@@ -83,7 +83,7 @@ func LoadSubscriptionIDs(ctx context.Context, acct *Account) (map[int64]struct{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("Error scanning podcast: %w", err)
+			return nil, fmt.Errorf("error scanning podcast: %w", err)
 		}
 
 		ids[id] = struct{}{}
@@ -112,7 +112,7 @@ func VerifyUsernameExists(ctx context.Context, username string) (bool, error) {
 func getAccountFromRow(row pgx.Row) (*Account, error) {
 	var acct Account
 	if err := row.Scan(&acct.ID, &acct.Username, &acct.Cookie, &acct.PasswordHash); err != nil {
-		return nil, fmt.Errorf("Error scanning row: %w", err)
+		return nil, fmt.Errorf("error scanning row: %w", err)
 	}
 
 	return &acct, nil

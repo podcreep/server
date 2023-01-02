@@ -40,19 +40,15 @@ func ParseSchedule(str string) (*Schedule, error) {
 			case "day":
 			case "days":
 				duration = time.Hour * 24
-				break
 			case "hour":
 			case "hours":
 				duration = time.Hour
-				break
 			case "minute":
 			case "minutes":
 				duration = time.Minute
-				break
 			case "second":
 			case "Seconds":
 				duration = time.Second
-				break
 			default:
 				return nil, fmt.Errorf("unknown intervalue type '%s' in schedule: %s", parts[2], str)
 			}

@@ -64,7 +64,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) error {
 		log.Print("it's empty")
 		redirectUrl = "/admin"
 	}
-	http.Redirect(w, r, redirectUrl, 302)
+	http.Redirect(w, r, redirectUrl, http.StatusFound)
 	return nil
 }
 
@@ -83,13 +83,13 @@ func authMiddleware(h http.Handler) http.Handler {
 		cookie, err := r.Cookie("sess")
 		if err != nil {
 			log.Printf("No cookie, redirecting to login.")
-			http.Redirect(w, r, loginUrl, 302)
+			http.Redirect(w, r, loginUrl, http.StatusFound)
 			return
 		}
 
 		if _, ok := sessions[cookie.Value]; !ok {
 			log.Printf("Invalid cookie value, redirecting to login.")
-			http.Redirect(w, r, loginUrl, 302)
+			http.Redirect(w, r, loginUrl, http.StatusFound)
 			return
 		}
 

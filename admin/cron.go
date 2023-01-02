@@ -75,7 +75,7 @@ func handleCronEdit(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	http.Redirect(w, r, "/admin/cron", 302)
+	http.Redirect(w, r, "/admin/cron", http.StatusFound)
 	return nil
 }
 
@@ -98,7 +98,7 @@ func handleCronDelete(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 
-		http.Redirect(w, r, "/admin/cron", 302)
+		http.Redirect(w, r, "/admin/cron", http.StatusFound)
 		return nil
 	}
 

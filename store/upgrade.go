@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 )
@@ -33,12 +33,12 @@ func UpgradeSchema(ctx context.Context, currentVersion int) error {
 				_, err := pool.Exec(ctx, "UPDATE schema_version SET version=$1", currentVersion)
 				return err
 			}
-			return fmt.Errorf("Error loading schema script: %w", err)
+			return fmt.Errorf("error loading schema script: %w", err)
 		}
 
 		_, err = pool.Exec(ctx, script)
 		if err != nil {
-			return fmt.Errorf("Error executing command: %w", err)
+			return fmt.Errorf("error executing command: %w", err)
 		}
 
 		currentVersion += 1
@@ -60,7 +60,7 @@ func loadSchemaUpgradeScript(ctx context.Context, version int) (string, error) {
 		return "", err
 	}
 
-	bytes, err := ioutil.ReadAll(f)
+	bytes, err := io.ReadAll(f)
 	if err != nil {
 		return "", err
 	}
