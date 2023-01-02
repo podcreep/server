@@ -13,6 +13,7 @@ import (
 	"github.com/podcreep/server/cron"
 	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
+	"github.com/podcreep/server/util"
 )
 
 var (
@@ -48,7 +49,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error creating request: %sL %v", url, err)
 	}
 	log.Printf("Fetching RSS URL: %s\n", url)
-	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
+	req.Header["User-Agent"] = []string{util.GetUserAgent()}
 
 	// Fetch the RSS feed via a HTTP request.
 	resp, err := httpClient.Do(req)

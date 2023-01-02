@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/podcreep/server/store"
+	"github.com/podcreep/server/util"
 
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -103,7 +104,7 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 	if p.ImagePath != nil {
 		maybeAddIfModifiedSince(req, p)
 	}
-	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
+	req.Header["User-Agent"] = []string{util.GetUserAgent()}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -242,7 +243,7 @@ func UpdatePodcast(ctx context.Context, p *store.Podcast, flags UpdatePodcastFla
 	if (flags & ForceUpdate) == 0 {
 		maybeAddIfModifiedSince(req, p)
 	}
-	req.Header["User-Agent"] = []string{"Podcreep/0.0.1"} // TODO: proper version
+	req.Header["User-Agent"] = []string{util.GetUserAgent()}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
