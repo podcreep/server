@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -67,6 +68,7 @@ func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 		ep.Description = htmlPolicy.Sanitize(ep.Description)
 	}
 	ep.ShortDescription = htmlPolicy.Sanitize(ep.ShortDescription)
+	ep.ShortDescription = html.UnescapeString(ep.ShortDescription)
 	if len(ep.ShortDescription) > 80 {
 		index := strings.Index(ep.ShortDescription[77:], " ")
 		ep.ShortDescription = ep.ShortDescription[0:77+index] + "..."

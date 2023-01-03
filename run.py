@@ -23,7 +23,7 @@ def sigint_handler(signal, frame):
 signal.signal(signal.SIGINT, sigint_handler)
 
 def build_and_run_server():
-  subprocess.run('adb reverse tcp:8080 tcp:8080')
+  subprocess.run(['adb','reverse','tcp:8080','tcp:8080'])
   
   env = os.environ.copy()
   env['DATABASE_URL'] = f'postgres://{args.dbuser}:{args.dbpass}@{args.dbhost}/{args.dbname}'
@@ -31,7 +31,7 @@ def build_and_run_server():
   env['DEBUG'] = '1'
   env['ADMIN_PASSWORD'] = args.admin_password
 
-  subprocess.run('go run main.go', check=False, env=env)
+  subprocess.run(['go','run','main.go'], check=False, env=env)
 
 while True:
   build_and_run_server()
