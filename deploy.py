@@ -69,7 +69,7 @@ def build_server():
 
   env = os.environ
   env["GOOS"] = "linux"
-  subprocess.run("go build", cwd=server_path, check=True, shell=True, env=env)
+  subprocess.run("go build -buildvcs=false", cwd=server_path, check=True, shell=True, env=env)
 
 
 def copy_server():
