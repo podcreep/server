@@ -190,5 +190,5 @@ func parsePubDate(pubDate string) (time.Time, error) {
 			return t, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("Failed to parse date: %s", ds)
+	return time.Time{}, fmt.Errorf("failed to parse date: %s", ds)
 }

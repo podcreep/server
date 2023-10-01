@@ -69,8 +69,8 @@ def build_server():
 
   env = os.environ
   env["GOOS"] = "linux"
+  env["GOARCH"] = "amd64"
   subprocess.run("go build -buildvcs=false", cwd=server_path, check=True, shell=True, env=env)
-
 
 def copy_server():
   print(" - copying server")

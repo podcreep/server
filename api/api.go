@@ -20,7 +20,7 @@ func authenticate(ctx context.Context, r *http.Request) (*store.Account, error) 
 	}
 
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return nil, fmt.Errorf("Authorization header is not Bearer header")
+		return nil, fmt.Errorf("authorization header is not Bearer header")
 	}
 	auth = auth[7:]
 

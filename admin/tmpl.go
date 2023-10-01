@@ -17,7 +17,7 @@ var (
 func render(w http.ResponseWriter, name string, data interface{}) error {
 	tmpl, ok := templates[name]
 	if !ok {
-		return fmt.Errorf("The template %s does not exist.", name)
+		return fmt.Errorf("template %s does not exist", name)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -40,7 +40,7 @@ func initTemplates() error {
 	}
 
 	templates = make(map[string]*template.Template)
-	err = filepath.Walk("admin/tmpl/", func(path string, info fs.FileInfo, err error) error {
+	err = filepath.Walk("admin/tmpl/", func(path string, info fs.FileInfo, _ error) error {
 		if strings.HasPrefix(filepath.Base(path), "_") {
 			return nil
 		}

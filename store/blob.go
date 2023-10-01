@@ -13,9 +13,9 @@ func GetBlobStorePath(name string) (string, error) {
 	if _, err := os.Stat(path); err != nil {
 		// Try to create it (the error could be anything, but let's see if just making the directory
 		// is enough to fix it).
-		err := os.MkdirAll(path, os.ModeDir)
+		err := os.MkdirAll(path, os.ModeDir|0755)
 		if err != nil {
-			return "", fmt.Errorf("Could not create blob store path: %w", err)
+			return "", fmt.Errorf("could not create blob store path: %w", err)
 		}
 	}
 

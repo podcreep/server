@@ -49,7 +49,7 @@ func cronCheckUpdates(ctx context.Context) error {
 		log.Printf("Updating podcast %s, LastFetchTime = %v", p.Title, p.LastFetchTime)
 		numUpdated, err := UpdatePodcast(ctx, p, 0 /*flags*/)
 		if err != nil {
-			return fmt.Errorf("Error updating podcast: %w", err)
+			return fmt.Errorf("error updating podcast: %w", err)
 		}
 		log.Printf(" - updated %d episodes", numUpdated)
 	}
@@ -62,19 +62,21 @@ func UpdatePodcast(ctx context.Context, podcast *store.Podcast, flags rss.Update
 	// we will ignore entirely.
 	episodes, err := store.LoadEpisodes(ctx, podcast.ID, 10)
 	if err != nil {
-		log.Printf("Error fetching podcast: %v", err)
-		return 0, err
+		return 0, fmt.Errorf("error fetching podcast: %v", err)
 	}
 	podcast.Episodes = episodes
 
 	// Actually do the update.
-	numUpdated, error := rss.UpdatePodcast(ctx, podcast, flags)
+	numUpdated, err := rss.UpdatePodcast(ctx, podcast, flags)
+	if err != nil {
+		return 0, fmt.Errorf("error fetching postcast: %v", err)
+	}
 
 	// Update the last fetch time.
 	podcast.LastFetchTime = time.Now()
 	_, err = store.SavePodcast(ctx, podcast)
 
-	return numUpdated, error
+	return numUpdated, err
 }
 
 func RunCronJob(ctx context.Context, now time.Time, job *store.CronJob) error {
@@ -85,20 +87,20 @@ func RunCronJob(ctx context.Context, now time.Time, job *store.CronJob) error {
 
 			err := fn(ctx)
 			if err != nil {
-				return fmt.Errorf("Error running job: %v", err)
+				return fmt.Errorf("error running job: %v", err)
 			}
 		}
 	}
 
 	if !found {
 		job.Enabled = false
-		return fmt.Errorf("Job does not exist: %s", job.Name)
+		return fmt.Errorf("job does not exist: %s", job.Name)
 	}
 
 	sched, err := util.ParseSchedule(job.Schedule)
 	if err != nil {
 		job.Enabled = false
-		return fmt.Errorf("Job has invalid schedule, cannot reschedule: %w", err)
+		return fmt.Errorf("job has invalid schedule, cannot reschedule: %w", err)
 	}
 	nextRun := sched.NextTime(now)
 	job.NextRun = &nextRun
