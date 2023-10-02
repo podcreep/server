@@ -13,6 +13,8 @@ parser.add_argument('--dbname', type=str, default='podcreep', help='Name of the 
 parser.add_argument('--dbhost', type=str, default='localhost', help='Host of the database server.')
 parser.add_argument('--blob_store_path', type=str, default='../store', help='Path to a directory on disk where we\'ll store "blobs", i.e. icons etc.')
 parser.add_argument('--admin_password', type=str, default='secret', help='Password to access the admin section.')
+parser.add_argument('--podcastindex_apikey', type=str, default='', help='API key for podcastindex.org')
+parser.add_argument('--podcastindex_apisecret', type=str, default='', help='API secret for podcastindex.org')
 args = parser.parse_args()
 
 # If we get a sigint when this is true, we'll exit. Otherwise, ignore the signal.
@@ -30,6 +32,8 @@ def build_and_run_server():
   env['BLOB_STORE_PATH'] = args.blob_store_path
   env['DEBUG'] = '1'
   env['ADMIN_PASSWORD'] = args.admin_password
+  env['PODCASTINDEX_APIKEY'] = args.podcastindex_apikey
+  env['PODCASTINDEX_APISECRET'] = args.podcastindex_apisecret
 
   subprocess.run(['go','run','main.go'], check=False, env=env)
 

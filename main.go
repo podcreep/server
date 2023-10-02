@@ -11,6 +11,7 @@ import (
 	"github.com/podcreep/server/admin"
 	"github.com/podcreep/server/api"
 	"github.com/podcreep/server/cron"
+	"github.com/podcreep/server/discover"
 	"github.com/podcreep/server/store"
 )
 
@@ -43,6 +44,9 @@ func main() {
 		panic(err)
 	}
 	if err := api.Setup(r); err != nil {
+		panic(err)
+	}
+	if err := discover.Setup(); err != nil {
 		panic(err)
 	}
 	if err := cron.Setup(r); err != nil {
