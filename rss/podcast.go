@@ -160,6 +160,7 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 
 			p.ImagePath = &iconPath
 			p.ImageURL = fmt.Sprintf("/blobs/podcasts/%d/icon/%s.png", p.ID, newSha1)
+			p.IsImageExternal = false
 		}
 	}
 

@@ -28,11 +28,12 @@ func handleDiscoverTrendingGet(w http.ResponseWriter, r *http.Request) error {
 	for _, podcast := range podcasts {
 		list.Podcasts = append(list.Podcasts, &podcastDetails{
 			Podcast: store.Podcast{
-				ID:          podcast.ID,
-				Title:       podcast.Title,
-				Description: podcast.Description,
-				ImageURL:    podcast.ImageUrl,
-				FeedURL:     podcast.Url,
+				ID:              podcast.ID,
+				Title:           podcast.Title,
+				Description:     podcast.Description,
+				ImageURL:        podcast.ImageUrl,
+				IsImageExternal: true, // Discover podcasts haven't been saved yet, so the icons are external.
+				FeedURL:         podcast.Url,
 			},
 		})
 	}

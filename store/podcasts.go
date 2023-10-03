@@ -22,6 +22,9 @@ type Podcast struct {
 	// The URL of the title image for the podcast.
 	ImageURL string `json:"imageUrl"`
 
+	// If true, the image is external and we should link to it directly rather than as a blob.
+	IsImageExternal bool `json:"isImageExternal"`
+
 	// The path on disk to the file where we have the image for this podcast saved. This will be
 	// null before we've fetched the image.
 	ImagePath *string `json:"-"`
