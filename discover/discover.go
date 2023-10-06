@@ -27,6 +27,7 @@ type Podcast struct {
 	Url                   string `json:"url"`
 	Title                 string `json:"title"`
 	Description           string `json:"description"`
+	Link                  string `json:"link"`
 	Author                string `json:"author"`
 	ImageUrl              string `json:"image"`
 	ArtworkUrl            string `json:"artwork"`
@@ -37,9 +38,14 @@ type Podcast struct {
 	// TODO "categories": { "55": "News", "59": "Politics", "16": "Comedy" }
 }
 
-type Result struct {
+type PodcastListResult struct {
 	Status string    `json:"status"`
 	Feeds  []Podcast `json:"feeds"`
+}
+
+type PodcastResult struct {
+	Status string  `json:"status"`
+	Feed   Podcast `json:"feed"`
 }
 
 // makeRequest makes a request for the given URL and then appends all
@@ -89,11 +95,39 @@ func FetchTrending() ([]Podcast, error) {
 		return nil, fmt.Errorf("error reading resp: %v", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(bytes)))
-	res := Result{}
+	res := PodcastListResult{}
 	err = decoder.Decode(&res)
 	if err != nil {
 		return nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
 	}
 
 	return res.Feeds, nil
+}
+
+func FetchPodcast(id int64) (*Podcast, error) {
+	req, err := makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/podcasts/byfeedid?id=%d", id))
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching trending: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading resp: %v", err)
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(bytes)))
+	res := PodcastResult{}
+	err = decoder.Decode(&res)
+	if err != nil {
+		return nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
+	}
+
+	fmt.Printf("feed: %v", res.Feed)
+
+	return &res.Feed, nil
 }
