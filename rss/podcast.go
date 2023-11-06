@@ -74,7 +74,7 @@ func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 		ep.ShortDescription = ep.ShortDescription[0:77+index] + "..."
 	}
 
-	log.Printf(" - episode [%v] '%s', updating", ep.PubDate, ep.Title)
+	log.Printf(" - episode [%v] [%s] '%s', updating", ep.GUID, ep.PubDate, ep.Title)
 	if err := store.SaveEpisode(ctx, p, &ep); err != nil {
 		return fmt.Errorf("error saving episode: %v", err)
 	}
@@ -193,7 +193,9 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 
 				if (flags & IconOnly) == 0 {
 					if err := updateEpisode(ctx, item, p); err != nil {
-						return numUpdated, fmt.Errorf("error updating item: %w", err)
+						// Error updating this item, but keep going.
+						log.Printf("error updating episode '%s' [guid:%s]: %v", item.Title, item.GUID, err)
+						continue
 					}
 					numUpdated++
 				}

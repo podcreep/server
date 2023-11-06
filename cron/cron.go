@@ -69,7 +69,7 @@ func UpdatePodcast(ctx context.Context, podcast *store.Podcast, flags rss.Update
 	// Actually do the update.
 	numUpdated, err := rss.UpdatePodcast(ctx, podcast, flags)
 	if err != nil {
-		return 0, fmt.Errorf("error fetching postcast: %v", err)
+		return 0, fmt.Errorf("error updating podcast '%s': %v", podcast.Title, err)
 	}
 
 	// Update the last fetch time.
