@@ -38,9 +38,24 @@ type Podcast struct {
 	// TODO "categories": { "55": "News", "59": "Politics", "16": "Comedy" }
 }
 
+type PodcastEpisode struct {
+	ID            int64  `json:"id"`
+	Link          string `json:"link"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	DatePublished int64  `json:"datePublished"`
+	Url           string `json:"enclosureUrl"`
+	Duration      int64  `json:"duration"`
+}
+
 type PodcastListResult struct {
 	Status string    `json:"status"`
 	Feeds  []Podcast `json:"feeds"`
+}
+
+type EpisodeListResult struct {
+	Status string            `json:"status"`
+	Items  []*PodcastEpisode `json:"items"`
 }
 
 type PodcastResult struct {
@@ -121,30 +136,54 @@ func Search(query string) ([]Podcast, error) {
 	return performQuery(req)
 }
 
-func FetchPodcast(id int64) (*Podcast, error) {
-	req, err := makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/podcasts/byfeedid?id=%d", id))
+func FetchPodcast(id int64) (*Podcast, []*PodcastEpisode, error) {
+	req, err := makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/podcasts/byfeedid"))
 	if err != nil {
-		return nil, fmt.Errorf("error making request: %v", err)
+		return nil, nil, fmt.Errorf("error making request: %v", err)
 	}
+	q := req.URL.Query()
+	q.Add("id", strconv.FormatInt(id, 10))
+	req.URL.RawQuery = q.Encode()
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching trending: %v", err)
+		return nil, nil, fmt.Errorf("error fetching trending: %v", err)
 	}
 	defer resp.Body.Close()
 
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading resp: %v", err)
+		return nil, nil, fmt.Errorf("error reading resp: %v", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(bytes)))
 	res := PodcastResult{}
 	err = decoder.Decode(&res)
 	if err != nil {
-		return nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
+		return nil, nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
 	}
 
-	fmt.Printf("feed: %v", res.Feed)
+	req, err = makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/episodes/byfeedid"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error making request: %v", err)
+	}
+	req.URL.RawQuery = q.Encode()
 
-	return &res.Feed, nil
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error fetching trending: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bytes, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading resp: %v", err)
+	}
+	decoder = json.NewDecoder(strings.NewReader(string(bytes)))
+	episodes := EpisodeListResult{}
+	err = decoder.Decode(&episodes)
+	if err != nil {
+		return nil, nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
+	}
+
+	return &res.Feed, episodes.Items, nil
 }

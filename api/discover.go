@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/podcreep/server/discover"
@@ -89,7 +90,7 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	podcast, err := discover.FetchPodcast(podcastID)
+	podcast, episodes, err := discover.FetchPodcast(podcastID)
 	if err != nil {
 		// I'm not sure what the best HTTP status to return here is?
 		return err
@@ -107,6 +108,18 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 			// TODO: link?
 		},
 	}
+
+	for _, episode := range episodes {
+		details.Episodes = append(details.Episodes, &store.Episode{
+			ID:          episode.ID,
+			PodcastID:   podcast.ID,
+			Title:       episode.Title,
+			Description: episode.Description,
+			PubDate:     time.Unix(episode.DatePublished, 0),
+			// TODO: Duration?
+		})
+	}
+
 	err = json.NewEncoder(w).Encode(&details)
 	if err != nil {
 		return err
