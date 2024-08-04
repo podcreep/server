@@ -78,12 +78,7 @@ func Setup() error {
 	return nil
 }
 
-func FetchTrending() ([]Podcast, error) {
-	req, err := makeRequest("https://api.podcastindex.org/api/1.0/podcasts/trending")
-	if err != nil {
-		return nil, fmt.Errorf("error making request: %v", err)
-	}
-
+func performQuery(req *http.Request) ([]Podcast, error) {
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching trending: %v", err)
@@ -92,7 +87,7 @@ func FetchTrending() ([]Podcast, error) {
 
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading resp: %v", err)
+		return nil, fmt.Errorf("error reading trendingresp: %v", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(bytes)))
 	res := PodcastListResult{}
@@ -102,6 +97,28 @@ func FetchTrending() ([]Podcast, error) {
 	}
 
 	return res.Feeds, nil
+}
+
+func FetchTrending() ([]Podcast, error) {
+	req, err := makeRequest("https://api.podcastindex.org/api/1.0/podcasts/trending")
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+
+	return performQuery(req)
+}
+
+func Search(query string) ([]Podcast, error) {
+	req, err := makeRequest("https://api.podcastindex.org/api/1.0/search/byterm")
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	q := req.URL.Query()
+	q.Add("q", query)
+	q.Add("similar", "true") // TODO: allow this to be configured?
+	req.URL.RawQuery = q.Encode()
+
+	return performQuery(req)
 }
 
 func FetchPodcast(id int64) (*Podcast, error) {
