@@ -35,7 +35,10 @@ def build_and_run_server():
   env['PODCASTINDEX_APIKEY'] = args.podcastindex_apikey
   env['PODCASTINDEX_APISECRET'] = args.podcastindex_apisecret
 
-  subprocess.run(['go','run','main.go'], check=False, env=env)
+  print("building...")
+  subprocess.run(['go', 'build', '-o', '..\server.exe'], check=False, env=env)
+  print("running...")
+  subprocess.run(['..\server.exe'], check=False, env=env)
 
 while True:
   build_and_run_server()
