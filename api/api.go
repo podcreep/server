@@ -72,6 +72,7 @@ func Setup(r *mux.Router) error {
 	r.HandleFunc("/api/podcasts/{id:[0-9]+}", wrap(handleSubscriptionsDelete)).Methods("DELETE")
 	r.HandleFunc("/blobs/podcasts/{id:[0-9]+}/icon/{sha1:.+}.png", wrap(handlePodcastIconGet)).Methods("GET")
 	r.HandleFunc("/api/podcasts/{id:[0-9]+}/subscriptions", wrap(handleSubscriptionsPost)).Methods("POST")
+	r.HandleFunc("/api/podcasts/subscribeDiscovered", wrap(handleSubscribeDiscoveredPost)).Methods("POST")
 	r.HandleFunc("/api/podcasts/{id:[0-9]+}/episodes/{ep:[0-9]+}/playback-state", wrap(handlePlaybackStatePut)).Methods("PUT")
 	r.HandleFunc("/api/subscriptions", wrap(handleSubscriptionsGet)).Methods("GET")
 	r.HandleFunc("/api/subscriptions/sync", wrap(handleSubscriptionsSync)).Methods("POST")

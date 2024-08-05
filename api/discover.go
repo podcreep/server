@@ -90,7 +90,7 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	podcast, episodes, err := discover.FetchPodcast(podcastID)
+	podcast, episodes, err := discover.FetchPodcast(podcastID /*includeEpisodes*/, true)
 	if err != nil {
 		// I'm not sure what the best HTTP status to return here is?
 		return err
@@ -100,6 +100,7 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 	details := &podcastDetails{
 		Podcast: store.Podcast{
 			ID:              podcast.ID,
+			DiscoverID:      strconv.FormatInt(podcast.ID, 10),
 			Title:           podcast.Title,
 			Description:     podcast.Description,
 			ImageURL:        podcast.ImageUrl,

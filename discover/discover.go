@@ -136,7 +136,7 @@ func Search(query string) ([]Podcast, error) {
 	return performQuery(req)
 }
 
-func FetchPodcast(id int64) (*Podcast, []*PodcastEpisode, error) {
+func FetchPodcast(id int64, includeEpisodes bool) (*Podcast, []*PodcastEpisode, error) {
 	req, err := makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/podcasts/byfeedid"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("error making request: %v", err)
@@ -162,27 +162,29 @@ func FetchPodcast(id int64) (*Podcast, []*PodcastEpisode, error) {
 		return nil, nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
 	}
 
-	req, err = makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/episodes/byfeedid"))
-	if err != nil {
-		return nil, nil, fmt.Errorf("error making request: %v", err)
-	}
-	req.URL.RawQuery = q.Encode()
-
-	resp, err = httpClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching trending: %v", err)
-	}
-	defer resp.Body.Close()
-
-	bytes, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error reading resp: %v", err)
-	}
-	decoder = json.NewDecoder(strings.NewReader(string(bytes)))
 	episodes := EpisodeListResult{}
-	err = decoder.Decode(&episodes)
-	if err != nil {
-		return nil, nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
+	if includeEpisodes {
+		req, err = makeRequest(fmt.Sprintf("https://api.podcastindex.org/api/1.0/episodes/byfeedid"))
+		if err != nil {
+			return nil, nil, fmt.Errorf("error making request: %v", err)
+		}
+		req.URL.RawQuery = q.Encode()
+
+		resp, err = httpClient.Do(req)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error fetching trending: %v", err)
+		}
+		defer resp.Body.Close()
+
+		bytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error reading resp: %v", err)
+		}
+		decoder = json.NewDecoder(strings.NewReader(string(bytes)))
+		err = decoder.Decode(&episodes)
+		if err != nil {
+			return nil, nil, fmt.Errorf(string(bytes[0:100])+": %v", err)
+		}
 	}
 
 	return &res.Feed, episodes.Items, nil

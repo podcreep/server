@@ -9,6 +9,10 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/podcreep/server/admin"
+	"github.com/podcreep/server/cron"
+	"github.com/podcreep/server/discover"
+	"github.com/podcreep/server/rss"
 	"github.com/podcreep/server/store"
 )
 
@@ -40,6 +44,10 @@ type subscriptionsSyncPostRequest struct {
 
 type subscriptionsSyncPostResponse struct {
 	Subscriptions []subscription `json:"subscriptions"`
+}
+
+type subscribeDiscoveredRequest struct {
+	DiscoveryID string `json:"discoveryId"`
 }
 
 func getSubscriptions(ctx context.Context, acct *store.Account) ([]subscription, error) {
@@ -133,6 +141,54 @@ func handleSubscriptionsPost(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	return store.SaveSubscription(ctx, acct, podcastID)
+}
+
+// handleSubscribeDiscoveredPost handles a POST to /api/podcasts/subscribeDiscovered, and adds a
+// subscription to the discovered podcast. If we do not yet track that podcast, we'll start tracking it.
+func handleSubscribeDiscoveredPost(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	var req subscribeDiscoveredRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+
+	acct, err := authenticate(ctx, r)
+	if err != nil {
+		return apiError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	podcast, err := store.LoadPodcastByDiscoverId(ctx, req.DiscoveryID)
+	if err != nil || podcast == nil {
+		// TODO: don't just assume any error is 'not found'. The problem is, row.Scan() doesn't seem to return ErrNoRows
+		// as it's documented to do.
+
+		discoverId, err := strconv.Atoi(req.DiscoveryID)
+		if err != nil {
+			return apiError("discover ID not an int", http.StatusInternalServerError)
+		}
+		discoverPodcast, _, err := discover.FetchPodcast(int64(discoverId) /*includeEpisodes*/, true)
+		if err != nil {
+			return err
+		}
+
+		id, err := admin.CreatePodcastFromUrl(ctx, discoverPodcast.Url)
+		if err != nil {
+			return err
+		}
+
+		podcast, err = store.LoadPodcast(ctx, id)
+		if err != nil {
+			return err
+		}
+		_, err = cron.UpdatePodcast(ctx, podcast, rss.ForceUpdate)
+		if err != nil {
+			return nil
+		}
+	}
+
+	return store.SaveSubscription(ctx, acct, podcast.ID)
 }
 
 // handleSubscriptionsDelete handles a DELETE to /api/podcasts/{id}/subscriptions, and removes a

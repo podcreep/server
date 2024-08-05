@@ -63,7 +63,7 @@ func DeleteSubscription(ctx context.Context, acct *Account, podcastID int64) err
 // GetSubscriptions return the Podcasts that this account is subscribed to.
 func GetSubscriptions(ctx context.Context, acct *Account) ([]*Podcast, error) {
 	sql := `SELECT
-			id, title, description, image_url, image_path, feed_url, last_fetch_time
+			id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time
 		FROM podcasts
 		  INNER JOIN subscriptions ON podcasts.id = subscriptions.podcast_id
 		WHERE subscriptions.account_id = $1`

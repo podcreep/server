@@ -13,6 +13,10 @@ type Podcast struct {
 	// A unique ID for this podcast.
 	ID int64 `json:"id"`
 
+	// If this podcast was discovered using the discovery API, this will be the ID of that podcast in the discovery
+	// API. This is a string because the discoverIDs are opaque.
+	DiscoverID string `json:"discoverId"`
+
 	// The title of the podcast.
 	Title string `json:"title"`
 
@@ -86,13 +90,13 @@ type EpisodeProgress struct {
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if p.ID == 0 {
-		sql := "INSERT INTO podcasts (title, description, image_url, image_path, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
-		row := pool.QueryRow(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
+		sql := "INSERT INTO podcasts (discover_id, title, description, image_url, image_path, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id"
+		row := pool.QueryRow(ctx, sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
 		err := row.Scan(&p.ID)
 		return p.ID, err
 	} else {
-		sql := "UPDATE podcasts SET title=$1, description=$2, image_url=$3, image_path=$4, feed_url=$5, last_fetch_time=$6 WHERE id=$7"
-		_, err := pool.Exec(ctx, sql, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
+		sql := "UPDATE podcasts SET discover_id=$1, title=$2, description=$3, image_url=$4, image_path=$5, feed_url=$6, last_fetch_time=$7 WHERE id=$8"
+		_, err := pool.Exec(ctx, sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
 		return p.ID, err
 	}
 }
@@ -122,9 +126,20 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 // LoadPodcast returns the podcast with the given ID.
 func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
-	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
+	sql := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
 	row := pool.QueryRow(ctx, sql, podcastID)
-	if err := row.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+		return nil, fmt.Errorf("error scanning row: %w", err)
+	}
+	return podcast, nil
+}
+
+// LoadPodcastByDiscoverId attempts to load a podcast with the given discover ID.
+func LoadPodcastByDiscoverId(ctx context.Context, discoverID string) (*Podcast, error) {
+	podcast := &Podcast{}
+	stmt := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE discover_id=$1"
+	row := pool.QueryRow(ctx, stmt, discoverID)
+	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 		return nil, fmt.Errorf("error scanning row: %w", err)
 	}
 	return podcast, nil
@@ -236,7 +251,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 	var podcasts []*Podcast
 	for rows.Next() {
 		var podcast Podcast
-		if err := rows.Scan(&podcast.ID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+		if err := rows.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 			return nil, fmt.Errorf("error scanning podcast2: %w", err)
 		}
 
@@ -249,7 +264,7 @@ func populatePodcasts(rows pgx.Rows) ([]*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	sql := "SELECT id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts"
+	sql := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts"
 	rows, _ := pool.Query(ctx, sql)
 	defer rows.Close()
 

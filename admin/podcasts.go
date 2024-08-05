@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -35,6 +36,41 @@ func handlePodcastsList(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
+func CreatePodcastFromUrl(ctx context.Context, url string) (int64, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("error creating request: %sL %v", url, err)
+	}
+	log.Printf("Fetching RSS URL: %s\n", url)
+	req.Header["User-Agent"] = []string{util.GetUserAgent()}
+
+	// Fetch the RSS feed via a HTTP request.
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("error fetching URL: %s: %v", url, err)
+	}
+	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
+	if resp.StatusCode != 200 {
+		reqDump, _ := httputil.DumpRequest(req, true)
+		respDump, _ := httputil.DumpResponse(resp, true)
+		return 0, fmt.Errorf("error fetching URL: %s status=%d\n%s\n\n%s", url, resp.StatusCode, string(reqDump), string(respDump))
+	}
+
+	// Unmarshal the RSS feed into an object we can query.
+	var feed rss.Feed
+	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+		return 0, fmt.Errorf("error unmarshalling response: %w", err)
+	}
+
+	podcast := store.Podcast{
+		Title:       feed.Channel.Title,
+		Description: feed.Channel.Description,
+		ImageURL:    feed.Channel.Image.URL,
+		FeedURL:     feed.Channel.Link.Href,
+	}
+	return store.SavePodcast(ctx, &podcast)
+}
+
 func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	if r.Method == "GET" {
 		return render(w, "podcast/add.html", nil)
@@ -44,38 +80,7 @@ func handlePodcastsAdd(w http.ResponseWriter, r *http.Request) error {
 	// It's a POST, so first, grab the URL of the RSS feed.
 	r.ParseForm()
 	url := r.Form.Get("url")
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("error creating request: %sL %v", url, err)
-	}
-	log.Printf("Fetching RSS URL: %s\n", url)
-	req.Header["User-Agent"] = []string{util.GetUserAgent()}
-
-	// Fetch the RSS feed via a HTTP request.
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("error fetching URL: %s: %v", url, err)
-	}
-	log.Printf("Fetched %d bytes, status %d %s, type %s\n", resp.ContentLength, resp.StatusCode, resp.Status, resp.Header.Get("Content-Type"))
-	if resp.StatusCode != 200 {
-		reqDump, _ := httputil.DumpRequest(req, true)
-		respDump, _ := httputil.DumpResponse(resp, true)
-		return fmt.Errorf("error fetching URL: %s status=%d\n%s\n\n%s", url, resp.StatusCode, string(reqDump), string(respDump))
-	}
-
-	// Unmarshal the RSS feed into an object we can query.
-	var feed rss.Feed
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		return fmt.Errorf("error unmarshalling response: %w", err)
-	}
-
-	podcast := store.Podcast{
-		Title:       feed.Channel.Title,
-		Description: feed.Channel.Description,
-		ImageURL:    feed.Channel.Image.URL,
-		FeedURL:     feed.Channel.Link.Href,
-	}
-	id, err := store.SavePodcast(ctx, &podcast)
+	id, err := CreatePodcastFromUrl(ctx, url)
 	if err != nil {
 		return fmt.Errorf("error saving podcast: %w", err)
 	}
