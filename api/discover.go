@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -85,20 +86,34 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 		return apiError("Unauthorized.", http.StatusUnauthorized)
 	}
 
-	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
-	if err != nil {
-		return err
-	}
+	details := &podcastDetails{}
 
-	podcast, episodes, err := discover.FetchPodcast(podcastID /*includeEpisodes*/, true)
-	if err != nil {
-		// I'm not sure what the best HTTP status to return here is?
-		return err
-	}
+	// First, see if we have this podcast already stored in our data store.
+	podcast, err := store.LoadPodcastByDiscoverId(ctx, vars["id"])
+	if podcast != nil && err == nil {
+		log.Println("got an existing podcast")
+		details.Podcast = *podcast
 
-	// Translate to our podcastDetails that the client understands.
-	details := &podcastDetails{
-		Podcast: store.Podcast{
+		episodes, err := store.LoadEpisodes(ctx, podcast.ID, 10)
+		if err != nil {
+			return err
+		}
+		details.Episodes = episodes
+	} else {
+		log.Println("existing podcast doesn't exist")
+		podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+		if err != nil {
+			return err
+		}
+
+		podcast, episodes, err := discover.FetchPodcast(podcastID /*includeEpisodes*/, true)
+		if err != nil {
+			// I'm not sure what the best HTTP status to return here is?
+			return err
+		}
+
+		// Translate to our podcastDetails that the client understands.
+		details.Podcast = store.Podcast{
 			ID:              podcast.ID,
 			DiscoverID:      strconv.FormatInt(podcast.ID, 10),
 			Title:           podcast.Title,
@@ -107,18 +122,18 @@ func handleDiscoverPodcastGet(w http.ResponseWriter, r *http.Request) error {
 			IsImageExternal: true, // Discover podcasts haven't been saved yet, so the icons are external.
 			FeedURL:         podcast.Url,
 			// TODO: link?
-		},
-	}
+		}
 
-	for _, episode := range episodes {
-		details.Episodes = append(details.Episodes, &store.Episode{
-			ID:          episode.ID,
-			PodcastID:   podcast.ID,
-			Title:       episode.Title,
-			Description: episode.Description,
-			PubDate:     time.Unix(episode.DatePublished, 0),
-			// TODO: Duration?
-		})
+		for _, episode := range episodes {
+			details.Episodes = append(details.Episodes, &store.Episode{
+				ID:          episode.ID,
+				PodcastID:   podcast.ID,
+				Title:       episode.Title,
+				Description: episode.Description,
+				PubDate:     time.Unix(episode.DatePublished, 0),
+				// TODO: Duration?
+			})
+		}
 	}
 
 	err = json.NewEncoder(w).Encode(&details)
