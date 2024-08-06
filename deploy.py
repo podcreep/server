@@ -9,14 +9,21 @@ import zipfile
 parser = argparse.ArgumentParser(description='Run the podcreep server locally.')
 parser.add_argument('--web_path', type=str, default='../web', help='Path where the web app is checked out to.')
 parser.add_argument('--server_path', type=str, default='.', help='Path where the server code is checked out to.')
-parser.add_argument('--android_path', type=str, default='../android', help='Path where the Android app\'s code is checked out to.')
-parser.add_argument('--deploy_path', type=str, default='../dist', help='Path where we build and deploy the server to, temporarily.')
+parser.add_argument('--android_path', type=str, default='../android',
+                    help='Path where the Android app\'s code is checked out to.')
+parser.add_argument('--deploy_path', type=str, default='../dist',
+                    help='Path where we build and deploy the server to, temporarily.')
 parser.add_argument('--keystore_path', type=str, default='../keystore.jks', help='Path to the keystore path.')
 parser.add_argument('--keystore_pass', type=str, default='', help='Password for the keystore.')
-parser.add_argument('--server_dest', type=str, required=True, help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
-parser.add_argument('--build_android', action=argparse.BooleanOptionalAction, default=True, help='Build the android app.')
-parser.add_argument('--build_server', action=argparse.BooleanOptionalAction, default=True, help='Build (and deploy) the server.')
-parser.add_argument('--install_android', action=argparse.BooleanOptionalAction, default=False, help='If set, attempt to install the Android APK to a connected Android device. Only honored if also building the Android app (i.e. you have not specified --no-build_android)')
+parser.add_argument('--server_dest', type=str, required=True,
+                    help='Location (in \'scp\' format) we copy the server.zip to. e.g. username@host:/path/file.zip.')
+parser.add_argument('--build_android', action=argparse.BooleanOptionalAction, default=True,
+                    help='Build the android app.')
+parser.add_argument('--build_server', action=argparse.BooleanOptionalAction, default=True,
+                    help='Build (and deploy) the server.')
+parser.add_argument('--install_android', action=argparse.BooleanOptionalAction, default=False,
+                    help='If set, attempt to install the Android APK to a connected Android device. Only honored if' +
+                         ' also building the Android app (i.e. you have not specified --no-build_android)')
 args = parser.parse_args()
 
 web_path = os.path.abspath(args.web_path)

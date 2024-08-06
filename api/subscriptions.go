@@ -182,6 +182,7 @@ func handleSubscribeDiscoveredPost(w http.ResponseWriter, r *http.Request) error
 		if err != nil {
 			return err
 		}
+		podcast.DiscoverID = req.DiscoveryID
 		_, err = cron.UpdatePodcast(ctx, podcast, rss.ForceUpdate)
 		if err != nil {
 			return nil

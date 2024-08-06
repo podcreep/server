@@ -66,7 +66,7 @@ func CreatePodcastFromUrl(ctx context.Context, url string) (int64, error) {
 		Title:       feed.Channel.Title,
 		Description: feed.Channel.Description,
 		ImageURL:    feed.Channel.Image.URL,
-		FeedURL:     feed.Channel.Link.Href,
+		FeedURL:     url,
 	}
 	return store.SavePodcast(ctx, &podcast)
 }
