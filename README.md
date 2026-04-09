@@ -13,12 +13,10 @@ like this:
 
 ## Dependencies
 
-Go 1.17 is required to run the server.
+Go 1.25.0 is required to run the server.
 
 ## Running locally
 
-In order to run locally, you need to have a postgresql database set up and running. Any decently
-modern version should do.
 
 ### Environment variables and running
 
