@@ -7,11 +7,26 @@ import sys
 from time import sleep
 
 parser = argparse.ArgumentParser(description='Run the podcreep server locally.')
-parser.add_argument('--dbfile', type=str, default='', help='Path to the database file.')
-parser.add_argument('--blob_store_path', type=str, default='../store', help='Path to a directory on disk where we\'ll store "blobs", i.e. icons etc.')
-parser.add_argument('--admin_password', type=str, default='secret', help='Password to access the admin section.')
-parser.add_argument('--podcastindex_apikey', type=str, default='', help='API key for podcastindex.org')
-parser.add_argument('--podcastindex_apisecret', type=str, default='', help='API secret for podcastindex.org')
+parser.add_argument('--dbfile',
+                    type=str,
+                    default='',
+                    help='Path to the database file.')
+parser.add_argument('--blob_store_path',
+                    type=str,
+                    default='../store',
+                    help='Path to a directory on disk where we\'ll store "blobs", i.e. icons etc.')
+parser.add_argument('--admin_password',
+                    type=str,
+                    default='secret',
+                    help='Password to access the admin section.')
+parser.add_argument('--podcastindex_apikey',
+                    type=str,
+                    default='',
+                    help='API key for podcastindex.org')
+parser.add_argument('--podcastindex_apisecret',
+                    type=str,
+                    default='',
+                    help='API secret for podcastindex.org')
 args = parser.parse_args()
 
 # If we get a sigint when this is true, we'll exit. Otherwise, ignore the signal.
