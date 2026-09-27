@@ -97,12 +97,20 @@ func calculateSha1(filepath string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error {
+func updateChannelImage(url string, force bool, p *store.Podcast) error {
+	if p.IsImageCustom && !force {
+		// If it's a custom image, then we don't want to update it unless we're forcing an update
+		// specifically of the icon.
+		return nil
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("error fetching %s: %w", url, err)
 	}
-	if p.ImagePath != nil {
+	// If we're not forcing an update, then we can use the If-Modified-Since header to avoid
+	// downloading the image if it hasn't changed.
+	if p.ImagePath != nil && !force {
 		maybeAddIfModifiedSince(req, p)
 	}
 	req.Header["User-Agent"] = []string{util.GetUserAgent()}
@@ -136,7 +144,9 @@ func updateChannelImage(ctx context.Context, url string, p *store.Podcast) error
 		if p.ImagePath != nil {
 			oldSha1, err = calculateSha1(*p.ImagePath)
 			if err != nil {
-				return fmt.Errorf("error calculating SHA1: %w", err)
+				// Probably the file didn't exist, which is fine. We'll just treat it as a new image.
+				log.Printf("Error calculating SHA1 for existing image, assuming it's new: %v", err)
+				oldSha1 = ""
 			}
 		}
 
@@ -212,7 +222,10 @@ func decodeChannelElement(ctx context.Context, se xml.StartElement, decoder *xml
 					url = image.Href
 				}
 
-				if err := updateChannelImage(ctx, url, p); err != nil {
+				// If we're doing IconOnly and force update, then we want to force-update the icon, even
+				// if it apparently hasn't changed.
+				forceIconUpdate := (flags&IconOnly) != 0 && (flags&ForceUpdate) != 0
+				if err := updateChannelImage(url, forceIconUpdate, p); err != nil {
 					return 0, fmt.Errorf("error updating channel image: %w", err)
 				}
 			}

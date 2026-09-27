@@ -148,6 +148,7 @@ func Setup(r *mux.Router) error {
 	subr.HandleFunc("/podcasts/{id:[0-9]+}", wrap(handlePodcastsEditPost)).Methods("POST")
 	subr.HandleFunc("/podcasts/{id:[0-9]+}", wrap(handlePodcastsDelete)).Methods("DELETE")
 	subr.HandleFunc("/podcasts/{id:[0-9]+}/refresh", wrap(handlePodcastsRefreshPost)).Methods("POST")
+	subr.HandleFunc("/podcasts/{id:[0-9]+}/upload-icon", wrap(handlePodcastsUploadIconPost)).Methods("POST")
 	subr.HandleFunc("/cron", wrap(handleCron)).Methods("GET")
 	subr.HandleFunc("/cron/add", wrap(handleCronAdd)).Methods("GET")
 	subr.HandleFunc("/cron/edit", wrap(handleCronEdit)).Methods("GET", "POST")

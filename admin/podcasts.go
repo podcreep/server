@@ -2,11 +2,17 @@ package admin
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"path"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -186,4 +192,66 @@ func handlePodcastsRefreshPost(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	return nil
+}
+
+func calculateSha1(file multipart.File) (string, error) {
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func handlePodcastsUploadIconPost(w http.ResponseWriter, r *http.Request) error {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	podcastID, err := strconv.ParseInt(vars["id"], 10, 0)
+	if err != nil {
+		return httpError(err.Error(), http.StatusBadRequest)
+	}
+
+	file, header, err := r.FormFile("icon")
+	if err != nil {
+		return httpError(fmt.Sprintf("error reading uploaded icon: %v", err), http.StatusBadRequest)
+	}
+	defer file.Close()
+
+	log.Printf("Received %s (%d bytes)", header.Filename, header.Size)
+
+	podcast, err := store.LoadPodcast(ctx, podcastID)
+	if err != nil {
+		return httpError(err.Error(), http.StatusNotFound)
+	}
+
+	sha1, err := calculateSha1(file)
+	if err != nil {
+		return httpError(fmt.Sprintf("error calculating SHA1 of uploaded icon: %v", err), http.StatusInternalServerError)
+	}
+
+	basePath, err := store.GetBlobStorePath("icons")
+	if err != nil {
+		return err
+	}
+
+	// TODO: this stuff should be common with the code in rss/podcast.go, so we don't have to
+	// duplicate it here.
+	iconPath := path.Join(basePath, sha1+".png")
+	iconFile, err := os.Create(iconPath)
+	if err != nil {
+		return fmt.Errorf("error opening icon file %s: %w", iconPath, err)
+	}
+	file.Seek(0, 0)
+	_, err = io.Copy(iconFile, file)
+	if err != nil {
+		return err
+	}
+
+	podcast.ImagePath = &iconPath
+	podcast.ImageURL = fmt.Sprintf("/blobs/podcasts/%d/icon/%s.png", podcast.ID, sha1)
+	podcast.IsImageExternal = false
+	podcast.IsImageCustom = true
+
+	_, err = store.SavePodcast(ctx, podcast)
+	return err
 }

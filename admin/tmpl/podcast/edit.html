@@ -39,6 +39,7 @@
     <p>
       <img src="{{.Podcast.ImageURL}}?width=100&height=100" width="100" />
       <button onclick="refreshPodcastIcon({{.Podcast.ID}}); return false;">Refresh icon</button>
+      <button onclick="uploadPodcastIcon({{.Podcast.ID}}); return false;">Upload icon</button>
     </p>
     <p><b>URL:</b> <input type="text" name="FeedUrl" value="{{.Podcast.FeedURL}}"></p>
     <p>
@@ -75,6 +76,27 @@
           location.reload();
         }
       });
+    }
+
+    function uploadPodcastIcon(id) {
+      var fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = "image/*";
+      fileInput.onchange = function() {
+        var formData = new FormData();
+        formData.append("icon", fileInput.files[0]);
+        $.ajax({
+          "url": "/admin/podcasts/" + id + "/upload-icon",
+          "method": "POST",
+          "data": formData,
+          "processData": false,
+          "contentType": false,
+          "success": function() {
+            location.reload();
+          }
+        });
+      };
+      fileInput.click();
     }
 
     function deletePodcast(id, title) {

@@ -28,6 +28,10 @@ type Podcast struct {
 	// If true, the image is external and we should link to it directly rather than as a blob.
 	IsImageExternal bool `json:"isImageExternal"`
 
+	// If true, the image is a custom one that an admin has uploaded, and we should not overwrite it
+	// when refreshing the image from the RSS feed.
+	IsImageCustom bool `json:"isImageCustom"`
+
 	// The path on disk to the file where we have the image for this podcast saved. This will be
 	// null before we've fetched the image.
 	ImagePath *string `json:"-"`
@@ -89,13 +93,13 @@ type EpisodeProgress struct {
 // SavePodcast saves the given podcast to the store.
 func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 	if p.ID == 0 {
-		sql := "INSERT INTO podcasts (discover_id, title, description, image_url, image_path, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id"
-		row := db.QueryRow(sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, time.Time{})
+		sql := "INSERT INTO podcasts (discover_id, title, description, image_url, image_path, is_image_custom, feed_url, last_fetch_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
+		row := db.QueryRow(sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.IsImageCustom, p.FeedURL, time.Time{})
 		err := row.Scan(&p.ID)
 		return p.ID, err
 	} else {
-		sql := "UPDATE podcasts SET discover_id=$1, title=$2, description=$3, image_url=$4, image_path=$5, feed_url=$6, last_fetch_time=$7 WHERE id=$8"
-		_, err := db.Exec(sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.FeedURL, p.LastFetchTime, p.ID)
+		sql := "UPDATE podcasts SET discover_id=$1, title=$2, description=$3, image_url=$4, image_path=$5, is_image_custom=$6, feed_url=$7, last_fetch_time=$8 WHERE id=$9"
+		_, err := db.Exec(sql, p.DiscoverID, p.Title, p.Description, p.ImageURL, p.ImagePath, p.IsImageCustom, p.FeedURL, p.LastFetchTime, p.ID)
 		return p.ID, err
 	}
 }
@@ -125,9 +129,9 @@ func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 // LoadPodcast returns the podcast with the given ID.
 func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 	podcast := &Podcast{}
-	sql := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
+	sql := "SELECT id, discover_id, title, description, image_url, image_path, is_image_custom, feed_url, last_fetch_time FROM podcasts WHERE id=$1"
 	row := db.QueryRow(sql, podcastID)
-	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.IsImageCustom, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 		return nil, fmt.Errorf("error scanning row 3: %w", err)
 	}
 	return podcast, nil
@@ -136,9 +140,9 @@ func LoadPodcast(ctx context.Context, podcastID int64) (*Podcast, error) {
 // LoadPodcastByDiscoverId attempts to load a podcast with the given discover ID.
 func LoadPodcastByDiscoverId(ctx context.Context, discoverID string) (*Podcast, error) {
 	podcast := &Podcast{}
-	stmt := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts WHERE discover_id=$1"
+	stmt := "SELECT id, discover_id, title, description, image_url, image_path, is_image_custom, feed_url, last_fetch_time FROM podcasts WHERE discover_id=$1"
 	row := db.QueryRow(stmt, discoverID)
-	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+	if err := row.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.IsImageCustom, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 		return nil, fmt.Errorf("error scanning row 2: %w", err)
 	}
 	return podcast, nil
@@ -250,7 +254,7 @@ func populatePodcasts(rows *sql.Rows) ([]*Podcast, error) {
 	var podcasts []*Podcast
 	for rows.Next() {
 		var podcast Podcast
-		if err := rows.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
+		if err := rows.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.IsImageCustom, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
 			return nil, fmt.Errorf("error scanning podcast2: %w", err)
 		}
 
@@ -263,7 +267,7 @@ func populatePodcasts(rows *sql.Rows) ([]*Podcast, error) {
 // LoadPodcasts loads all podcasts from the data store.
 // TODO: support paging, filtering, sorting(?), etc.
 func LoadPodcasts(ctx context.Context) ([]*Podcast, error) {
-	sql := "SELECT id, discover_id, title, description, image_url, image_path, feed_url, last_fetch_time FROM podcasts"
+	sql := "SELECT id, discover_id, title, description, image_url, image_path, is_image_custom, feed_url, last_fetch_time FROM podcasts"
 	rows, _ := db.Query(sql)
 	defer rows.Close()
 
