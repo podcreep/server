@@ -59,6 +59,7 @@ func updateEpisode(ctx context.Context, item Item, p *store.Podcast) error {
 		DescriptionHTML:  false,
 		ShortDescription: item.Description,
 		PubDate:          pubDate,
+		Duration:         parseDuration(item.Duration),
 	}
 
 	if item.EncodedDescription != "" {

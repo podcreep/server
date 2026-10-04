@@ -59,6 +59,9 @@ type Episode struct {
 	PubDate          time.Time `json:"pubDate"`
 	MediaURL         string    `json:"mediaUrl"`
 
+	// Duration is the length of the episode in seconds. This will be -1 if we don't know the length.
+	Duration int32 `json:"duration"`
+
 	// Position is the offset, in seconds, that the user is at for the episode. This will be null for
 	// episodes that don't have any progress (either the user is not subscribed, or they haven't
 	// started watching yet).
@@ -107,12 +110,12 @@ func SavePodcast(ctx context.Context, p *Podcast) (int64, error) {
 // SaveEpisode saves the given episode to the data store.
 func SaveEpisode(ctx context.Context, p *Podcast, ep *Episode) error {
 	var sql = `INSERT INTO episodes
-		       (guid, podcast_id, title, description, description_html, short_description, pub_date, media_url)
-					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		       (guid, podcast_id, title, description, description_html, short_description, pub_date, media_url, duration_secs)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 					 ON CONFLICT (podcast_id, guid) DO UPDATE SET
-					   title=$3, description=$4, description_html=$5, short_description=$6, pub_date=$7, media_url=$8
+					   title=$3, description=$4, description_html=$5, short_description=$6, pub_date=$7, media_url=$8, duration_secs=$9
 					 RETURNING id`
-	row := db.QueryRow(sql, ep.GUID, p.ID, ep.Title, ep.Description, ep.DescriptionHTML, ep.ShortDescription, ep.PubDate, ep.MediaURL)
+	row := db.QueryRow(sql, ep.GUID, p.ID, ep.Title, ep.Description, ep.DescriptionHTML, ep.ShortDescription, ep.PubDate, ep.MediaURL, ep.Duration)
 	var id int64
 	if err := row.Scan(&id); err != nil {
 		return err
@@ -151,12 +154,12 @@ func LoadPodcastByDiscoverId(ctx context.Context, discoverID string) (*Podcast, 
 // LoadEpisode gets the episode with the given ID for the given podcast.
 func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, error) {
 	sql := `SELECT
-			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, duration_secs
 		FROM episodes
 		WHERE id = $1`
 	row := db.QueryRow(sql, episodeID)
 	var ep Episode
-	if err := row.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL); err != nil {
+	if err := row.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Duration); err != nil {
 		return nil, fmt.Errorf("error scanning row 6: %w", err)
 	}
 
@@ -165,7 +168,7 @@ func LoadEpisode(ctx context.Context, p *Podcast, episodeID int64) (*Episode, er
 
 func populateEpisode(currRow Scannable) (*Episode, error) {
 	var ep Episode
-	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Position, &ep.IsComplete, &ep.LastListenTime)
+	err := currRow.Scan(&ep.ID, &ep.PodcastID, &ep.GUID, &ep.Title, &ep.Description, &ep.DescriptionHTML, &ep.ShortDescription, &ep.PubDate, &ep.MediaURL, &ep.Duration, &ep.Position, &ep.IsComplete, &ep.LastListenTime)
 	return &ep, err
 }
 
@@ -187,7 +190,7 @@ func populateEpisodes(rows *sql.Rows) ([]*Episode, error) {
 // then loads all episodes.
 func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, error) {
 	sql := `SELECT
-	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, NULL, NULL, NULL
+	    id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, duration_secs, NULL, NULL, NULL
 		FROM episodes
 		WHERE podcast_id = $1
 		ORDER BY pub_date DESC`
@@ -204,7 +207,7 @@ func LoadEpisodes(ctx context.Context, podcastID int64, limit int) ([]*Episode, 
 // return all episodes that the account has not finished listening to.
 func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast) ([]*Episode, error) {
 	sql := `SELECT
-			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, position_secs, episode_complete, episode_progress.last_updated
+			id, podcast_id, guid, title, description, description_html, short_description, pub_date, media_url, duration_secs, position_secs, episode_complete, episode_progress.last_updated
 		FROM episodes
 		LEFT OUTER JOIN episode_progress ON episodes.id = episode_progress.episode_id
 		WHERE podcast_id = $1
@@ -223,7 +226,7 @@ func LoadEpisodesForSubscription(ctx context.Context, acct *Account, p *Podcast)
 func LoadEpisodesNewAndInProgress(ctx context.Context, acct *Account, numDays int) (newEpisodes []*Episode, inProgress []*Episode, err error) {
 	sql := `
 		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
-		       pub_date, media_url, position_secs, episode_complete, ep.last_updated
+		       pub_date, media_url, e.duration_secs, position_secs, episode_complete, ep.last_updated
 		FROM episodes e
 		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
 		LEFT JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id
@@ -255,7 +258,7 @@ func populatePodcasts(rows *sql.Rows) ([]*Podcast, error) {
 	for rows.Next() {
 		var podcast Podcast
 		if err := rows.Scan(&podcast.ID, &podcast.DiscoverID, &podcast.Title, &podcast.Description, &podcast.ImageURL, &podcast.ImagePath, &podcast.IsImageCustom, &podcast.FeedURL, &podcast.LastFetchTime); err != nil {
-			return nil, fmt.Errorf("error scanning podcast2: %w", err)
+			return nil, fmt.Errorf("error scanning podcast 2: %w", err)
 		}
 
 		podcasts = append(podcasts, &podcast)
@@ -301,7 +304,7 @@ func SaveEpisodeProgress(ctx context.Context, progress *EpisodeProgress) error {
 func GetMostRecentPlaybackState(ctx context.Context, acct *Account) (*Episode, error) {
 	sql := `
 		SELECT e.id, e.podcast_id, guid, title, description, description_html, short_description,
-		       pub_date, media_url, position_secs, episode_complete, ep.last_updated
+		       pub_date, media_url, e.duration_secs, position_secs, episode_complete, ep.last_updated
 		FROM episodes e
 		INNER JOIN subscriptions s ON s.podcast_id = e.podcast_id
 		INNER JOIN episode_progress ep ON ep.episode_id = e.id AND ep.account_id = s.account_id

@@ -24,6 +24,7 @@ type Item struct {
 	PubDate            string `xml:"pubDate"`
 	GUID               string `xml:"guid"`
 	Media              Media  `xml:"enclosure"`
+	Duration           string `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
 }
 
 // AtomLink ...
